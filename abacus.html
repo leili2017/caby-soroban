@@ -1,0 +1,800 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Interactive Soroban</title>
+<style>
+  :root {
+    --bg: #f5f5f7;
+    --panel: #ffffff;
+    --frame: #5a3a22;
+    --frame-dark: #3f2817;
+    --bead: #c9772f;
+    --bead-hi: #e59a56;
+    --bead-active: #d94f3d;
+    --bead-active-hi: #f0806f;
+    --rod: #8a8a8a;
+    --text: #1d1d1f;
+    --muted: #6e6e73;
+    --accent: #0071e3;
+    --good: #2faa5d;
+    --zoneA: #2d5fa8;
+    --zoneB: #2a7d4f;
+    --zoneC: #b07d28;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #1c1c1e;
+      --panel: #2c2c2e;
+      --text: #f5f5f7;
+      --muted: #a1a1a6;
+      --frame: #6b4524;
+      --frame-dark: #4a2f18;
+      --zoneA: #3a6fbf;
+      --zoneB: #2f8f5a;
+      --zoneC: #c08a2e;
+    }
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", system-ui, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    padding: 20px;
+    -webkit-font-smoothing: antialiased;
+  }
+  .wrap { max-width: 1000px; margin: 0 auto; }
+  h1 { font-size: 22px; margin: 0 0 4px; }
+  .sub { color: var(--muted); font-size: 14px; margin: 0 0 18px; }
+
+  .controls {
+    display: flex; flex-wrap: wrap; gap: 10px; align-items: center;
+    background: var(--panel); padding: 14px 16px; border-radius: 14px;
+    margin-bottom: 16px; box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+  }
+  .mode-group { display: flex; gap: 6px; background: var(--bg); padding: 4px; border-radius: 10px; }
+  .mode-btn {
+    border: none; background: transparent; color: var(--text);
+    padding: 7px 14px; border-radius: 7px; font-size: 13px; font-weight: 600;
+    cursor: pointer; transition: all .15s;
+  }
+  .mode-btn.active { background: var(--accent); color: #fff; }
+  .spacer { flex: 1; }
+  button.act {
+    border: none; background: var(--accent); color: #fff;
+    padding: 9px 18px; border-radius: 9px; font-size: 14px; font-weight: 600;
+    cursor: pointer; transition: all .15s;
+  }
+  button.act:hover { filter: brightness(1.08); }
+  button.act:disabled { opacity: .4; cursor: default; }
+  button.ghost { background: var(--bg); color: var(--text); }
+
+  .level-ctl {
+    display: flex; align-items: center; gap: 8px;
+    background: var(--bg); padding: 6px 12px; border-radius: 10px;
+  }
+  .level-ctl label { font-size: 13px; font-weight: 600; color: var(--muted); }
+  .level-ctl input[type=range] { width: 110px; accent-color: var(--accent); cursor: pointer; }
+  .level-ctl #levelReadout {
+    font-size: 13px; font-weight: 700; color: var(--accent);
+    min-width: 92px; font-variant-numeric: tabular-nums;
+  }
+
+  /* Abacus */
+  .abacus {
+    background: var(--frame);
+    border: 10px solid var(--frame-dark);
+    border-radius: 12px;
+    display: flex;
+    position: relative;
+    margin: 30px 0;
+    box-shadow: 0 6px 20px rgba(0,0,0,0.2), inset 0 0 30px rgba(0,0,0,0.25);
+    overflow: visible;
+    user-select: none;
+  }
+  .rod {
+    position: relative;
+    flex: 1;
+    height: 300px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+  }
+  .rod .tint {
+    position: absolute; top: 0; bottom: 0; left: 0; right: 0;
+    z-index: 0; background: transparent; transition: background .2s;
+  }
+  .rod .wire {
+    position: absolute; top: 0; bottom: 0; left: 50%;
+    width: 3px; transform: translateX(-50%);
+    background: var(--rod); border-radius: 2px; z-index: 1;
+  }
+  .bar {
+    position: absolute; left: 0; right: 0; top: 92px; height: 10px;
+    background: var(--frame-dark); z-index: 3;
+    box-shadow: 0 1px 2px rgba(0,0,0,0.4);
+  }
+  .bead {
+    position: absolute; left: 50%; transform: translateX(-50%);
+    width: 46px; height: 26px; z-index: 2;
+    background: radial-gradient(ellipse at 35% 30%, var(--bead-hi), var(--bead) 70%);
+    border-radius: 50%;
+    cursor: pointer;
+    transition: top .18s cubic-bezier(.3,.7,.3,1);
+    box-shadow: 0 1px 2px rgba(0,0,0,0.35);
+  }
+  .bead.active {
+    background: radial-gradient(ellipse at 35% 30%, var(--bead-active-hi), var(--bead-active) 70%);
+  }
+  .zonelabel {
+    position: absolute; top: -24px; left: 0; right: 0; text-align: center;
+    font-size: 10px; font-weight: 700; color: #ffe; opacity: .6; letter-spacing: .3px;
+    white-space: nowrap;
+  }
+  .placelabel {
+    position: absolute; bottom: -22px; left: 0; right: 0; text-align: center;
+    font-size: 10px; color: #ffe; opacity: .4; letter-spacing: .3px;
+  }
+
+  .readouts {
+    display: flex; flex-wrap: wrap; gap: 24px;
+    margin: 34px 0 16px; font-variant-numeric: tabular-nums;
+  }
+  .ro { display: flex; flex-direction: column; gap: 2px; }
+  .ro .label { font-size: 12px; color: var(--muted); font-weight: 600; }
+  .ro .val {
+    font-size: 30px; font-weight: 700; letter-spacing: 1px;
+    color: var(--accent); font-feature-settings: "tnum";
+  }
+  .ro.b .val { color: var(--good); }
+  .ro.c .val { color: #d98a1f; }
+
+  .step-panel {
+    background: var(--panel); border-radius: 14px; padding: 18px 20px;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.08); min-height: 90px;
+  }
+  .step-head { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; }
+  .pill {
+    background: var(--accent); color: #fff; font-size: 12px; font-weight: 700;
+    padding: 3px 10px; border-radius: 20px; white-space: nowrap;
+  }
+  .pill.done { background: var(--good); }
+  .step-title { font-size: 16px; font-weight: 700; }
+  .step-body { font-size: 14px; line-height: 1.5; color: var(--text); }
+  .step-body code {
+    background: var(--bg); padding: 1px 6px; border-radius: 5px;
+    font-family: "SF Mono", ui-monospace, monospace; font-size: 13px;
+  }
+  .hint { color: var(--muted); font-size: 12px; margin-top: 10px; }
+  .free-note { font-size: 13px; color: var(--muted); line-height: 1.5; }
+  .legend { display: inline-block; width: 11px; height: 11px; border-radius: 3px; vertical-align: middle; margin: 0 4px 0 2px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>Interactive Soroban</h1>
+  <p class="sub">Click beads to move them toward the bar, or step through a worked 2-digit example. Scripted modes use real soroban <b>zones</b> — colored bands show where each number lives.</p>
+
+  <div class="controls">
+    <div class="mode-group">
+      <button class="mode-btn active" data-mode="free">Free play</button>
+      <button class="mode-btn" data-mode="add">58 + 67</button>
+      <button class="mode-btn" data-mode="sub">125 − 67</button>
+      <button class="mode-btn" data-mode="mult">23 × 14</button>
+      <button class="mode-btn" data-mode="div">322 ÷ 14</button>
+      <button class="mode-btn" data-mode="challenge">Guided challenge</button>
+    </div>
+    <div class="level-ctl" id="levelCtl">
+      <label for="levelSlider">Level</label>
+      <input type="range" id="levelSlider" min="1" max="5" step="1" value="1">
+      <span id="levelReadout">1 · Warm-up</span>
+    </div>
+    <div class="spacer"></div>
+    <button class="act ghost" id="prevBtn">‹ Back</button>
+    <button class="act" id="nextBtn">Next step ›</button>
+    <button class="act" id="checkBtn">Check ✓</button>
+    <button class="act" id="finalBtn">Check final answer</button>
+    <button class="act ghost" id="newBtn">New problem</button>
+    <button class="act ghost" id="resetBtn">Clear</button>
+  </div>
+
+  <div class="abacus" id="abacus"></div>
+
+  <div class="readouts" id="readouts"></div>
+
+  <div class="step-panel" id="stepPanel"></div>
+</div>
+
+<script>
+const NRODS = 9;              // rod 0 = leftmost ... rod 8 = ones
+const ONES = NRODS - 1;
+let rods = [];                // rods[i] = integer 0..9 shown on that rod
+let mode = 'free';
+let stepIndex = -1;
+
+const abacusEl = document.getElementById('abacus');
+const readoutsEl = document.getElementById('readouts');
+const stepPanel = document.getElementById('stepPanel');
+const nextBtn = document.getElementById('nextBtn');
+const prevBtn = document.getElementById('prevBtn');
+const checkBtn = document.getElementById('checkBtn');
+const finalBtn = document.getElementById('finalBtn');
+const newBtn = document.getElementById('newBtn');
+const resetBtn = document.getElementById('resetBtn');
+const levelCtl = document.getElementById('levelCtl');
+const levelSlider = document.getElementById('levelSlider');
+const levelReadout = document.getElementById('levelReadout');
+
+/* ---------- Zone definitions per mode ----------
+   rodStart..rodEnd inclusive. color: a|b|c  */
+const ZONES = {
+  mult: [
+    { key:'a', label:'Multiplicand', rods:[0,1] },
+    { key:'c', label:'Multiplier',   rods:[3,4] },
+    { key:'b', label:'Product',      rods:[6,8] },
+  ],
+  div: [
+    { key:'a', label:'Quotient', rods:[2,3] },
+    { key:'b', label:'Dividend', rods:[6,8] },
+  ],
+  challenge: [
+    { key:'a', label:'Quotient', rods:[2,3] },
+    { key:'b', label:'Dividend', rods:[6,8] },
+  ],
+};
+const ZONE_BG = { a:'var(--zoneA)', b:'var(--zoneB)', c:'var(--zoneC)' };
+
+/* ---------- Build the physical abacus ---------- */
+function buildAbacus() {
+  abacusEl.innerHTML = '';
+  for (let i = 0; i < NRODS; i++) {
+    const rod = document.createElement('div');
+    rod.className = 'rod';
+
+    const tint = document.createElement('div');
+    tint.className = 'tint';
+    rod.appendChild(tint);
+
+    const wire = document.createElement('div');
+    wire.className = 'wire';
+    rod.appendChild(wire);
+
+    const zl = document.createElement('div'); zl.className = 'zonelabel'; rod.appendChild(zl);
+
+    const place = ONES - i;
+    const names = {0:'1s',1:'10s',2:'100s',3:'1Ks'};
+    if (names[place]) {
+      const pl = document.createElement('div');
+      pl.className = 'placelabel';
+      pl.textContent = names[place];
+      rod.appendChild(pl);
+    }
+
+    const h = document.createElement('div');
+    h.className = 'bead heaven';
+    h.addEventListener('click', () => toggleHeaven(i));
+    rod.appendChild(h);
+
+    for (let b = 0; b < 4; b++) {
+      const e = document.createElement('div');
+      e.className = 'bead earth';
+      e.addEventListener('click', () => clickEarth(i, b));
+      rod.appendChild(e);
+    }
+
+    const bar = document.createElement('div');
+    bar.className = 'bar';
+    rod.appendChild(bar);
+    abacusEl.appendChild(rod);
+  }
+}
+
+/* ---------- Bead geometry ---------- */
+const TOP = 6, BAR_TOP = 92, BEAD_H = 26, GAP = 2;
+function renderBeads() {
+  for (let i = 0; i < NRODS; i++) {
+    const rodEl = abacusEl.children[i];
+    const val = rods[i];
+    const heavenActive = val >= 5;
+    const earthCount = val % 5;
+
+    const heaven = rodEl.querySelector('.heaven');
+    heaven.style.top = heavenActive ? (BAR_TOP - BEAD_H - 1) + 'px' : TOP + 'px';
+    heaven.classList.toggle('active', heavenActive);
+
+    const earths = rodEl.querySelectorAll('.earth');
+    earths.forEach((e, b) => {
+      const active = b < earthCount;
+      let top;
+      if (active) top = BAR_TOP + 12 + b * (BEAD_H + GAP);
+      else        top = 300 - BEAD_H - ((3 - b) * (BEAD_H + GAP));
+      e.style.top = top + 'px';
+      e.classList.toggle('active', active);
+    });
+  }
+  renderReadouts();
+}
+
+/* ---------- Zone tints + labels ---------- */
+let guidedZones = null;   // dynamic zones for challenge mode (set per problem)
+function zonesForMode() { return mode === 'challenge' ? guidedZones : ZONES[mode]; }
+function applyZones() {
+  // clear
+  for (let i = 0; i < NRODS; i++) {
+    const rodEl = abacusEl.children[i];
+    rodEl.querySelector('.tint').style.background = 'transparent';
+    rodEl.querySelector('.zonelabel').textContent = '';
+  }
+  const zs = zonesForMode();
+  if (!zs) return;
+  zs.forEach(z => {
+    const [s, e] = z.rods;
+    const mid = Math.round((s + e) / 2);
+    for (let i = s; i <= e; i++) {
+      abacusEl.children[i].querySelector('.tint').style.background = ZONE_BG[z.key];
+    }
+    abacusEl.children[mid].querySelector('.zonelabel').textContent = z.label;
+  });
+}
+
+/* ---------- Readouts ---------- */
+function readZone(s, e) {
+  let str = '';
+  for (let i = s; i <= e; i++) str += rods[i];
+  str = str.replace(/^0+/, '');
+  return str === '' ? '0' : str;
+}
+function renderReadouts() {
+  const zs = zonesForMode();
+  if (!zs) {
+    let s = rods.join('').replace(/^0+/, '');
+    readoutsEl.innerHTML =
+      `<div class="ro"><span class="label">Reads</span><span class="val">${s===''?'0':s}</span></div>`;
+    return;
+  }
+  readoutsEl.innerHTML = zs.map(z =>
+    `<div class="ro ${z.key}"><span class="label">${z.label}</span><span class="val">${readZone(z.rods[0], z.rods[1])}</span></div>`
+  ).join('');
+}
+
+/* ---------- Free-play interactions ---------- */
+function toggleHeaven(i) {
+  if (mode !== 'free' && mode !== 'challenge') return;
+  rods[i] = rods[i] >= 5 ? rods[i] - 5 : rods[i] + 5;
+  renderBeads();
+}
+function clickEarth(i, b) {
+  if (mode !== 'free' && mode !== 'challenge') return;
+  const earthCount = rods[i] % 5;
+  const heaven = rods[i] >= 5 ? 5 : 0;
+  let newEarth = (b < earthCount) ? b : b + 1;
+  rods[i] = heaven + newEarth;
+  renderBeads();
+}
+function clearAll() { rods = new Array(NRODS).fill(0); renderBeads(); }
+function clearNoRender() { rods = new Array(NRODS).fill(0); }
+
+/* ---------- Scripted helpers: place digits at specific rods ---------- */
+// place a number so its ONES digit sits on rod `onesRod`
+function placeNum(onesRod, value) {
+  const digits = String(value).split('').reverse();
+  digits.forEach((d, k) => {
+    const idx = onesRod - k;
+    if (idx >= 0) rods[idx] = parseInt(d, 10);
+  });
+}
+// place a number LEFT-anchored: its FIRST digit sits on `startRod`,
+// each subsequent digit is appended to the right. Used for the quotient so the
+// first digit stays put and later digits grow rightward.
+function placeNumLeft(startRod, value) {
+  const digits = String(value).split('');
+  digits.forEach((d, k) => {
+    const idx = startRod + k;
+    if (idx < NRODS) rods[idx] = parseInt(d, 10);
+  });
+}
+
+/* ---------- Multiplication 23 × 14 ----------
+   multiplicand 23 -> rods 0,1  | multiplier 14 -> rods 3,4 | product -> rods 6,7,8 */
+function setupMult() { clearNoRender(); placeNum(1, 23); placeNum(4, 14); }
+const multSteps = [
+  { title:'Set up the three zones',
+    body:'Left band = <b>multiplicand 23</b>. Middle band = <b>multiplier 14</b>. Right band = <b>product</b> (empty for now). We multiply digit-by-digit, starting from the ones of each number, and each product lands in the right-hand zone.',
+    apply:()=>{ setupMult(); } },
+  { title:'4 × 3 = 12',
+    body:'Multiplier ones (<code>4</code>) × multiplicand ones (<code>3</code>) = <b>12</b>. Both are ones, so it lands on the product\'s <b>tens + ones</b> rods. Product reads <code>12</code>.',
+    apply:()=>{ setupMult(); placeNum(8, 12); } },
+  { title:'4 × 2 = 8  (shift one rod left)',
+    body:'Multiplier ones (<code>4</code>) × multiplicand tens (<code>2</code>) = <b>8</b>. The <code>2</code> is a tens digit, so shift <b>one product rod left</b>: add 8 to the tens rod. <code>12 + 80 = 92</code>.',
+    apply:()=>{ setupMult(); placeNum(8, 92); } },
+  { title:'1 × 3 = 3  (shift one rod left)',
+    body:'Now the multiplier tens (<code>1</code>). <code>1 × 3 = 3</code>, shifted one rod left into the <b>tens</b> of the product. <code>92 + 30 = 122</code>.',
+    apply:()=>{ setupMult(); placeNum(8, 122); } },
+  { title:'1 × 2 = 2  (shift again)',
+    body:'Final pair: <code>1 × 2 = 2</code>, now in the <b>hundreds</b> rod. <code>122 + 200 = 322</code>.',
+    apply:()=>{ setupMult(); placeNum(8, 322); } },
+  { title:'✓ 23 × 14 = 322',
+    body:'Every digit pair multiplied and added in its correct rod. Your only jobs: supply each single-digit product, and shift one product rod left each time you step up a place in either number.',
+    apply:()=>{ setupMult(); placeNum(8, 322); }, done:true },
+];
+
+/* ---------- Division 322 ÷ 14 ----------
+   quotient -> rods 2,3  | dividend -> rods 6,7,8
+   quotient placement: because the divisor (14) has 2 digits, the first quotient
+   digit sits two rods left of the dividend's leading digit (rod 6 -> rod 4...),
+   but to keep a clean readable gap we anchor the quotient's ONES on rod 3. */
+function setupDiv(divVal, quoVal) {
+  clearNoRender();
+  placeNum(8, divVal);
+  if (quoVal !== null && quoVal !== undefined) placeNumLeft(2, quoVal);
+}
+const divSteps = [
+  { title:'Set up: dividend on the right',
+    body:'Right band = <b>dividend 322</b>. Left band = <b>quotient</b> (empty). Divisor is <code>14</code> (kept in mind). We estimate a quotient digit, place it on the left, then subtract divisor × that digit from the dividend — and repeat.',
+    apply:()=>{ setupDiv(322, null); } },
+  { title:'How many 14s in 32? → 2',
+    body:'Look at the dividend\'s leading <code>32</code>. <code>14 × 2 = 28</code> fits; <code>14 × 3 = 42</code> is too big. First quotient digit = <b>2</b> — placed in the quotient zone (tens rod). Nothing subtracted yet.',
+    apply:()=>{ setupDiv(322, 2); } },
+  { title:'Subtract 2 × 14 = 28',
+    body:'Take <code>28</code> off the leading <code>32</code>: <code>32 − 28 = 4</code>. The dividend now reads <code>42</code>. <b>Quotient zone shows 2</b> on its own rod — that\'s where it lives.',
+    apply:()=>{ setupDiv(42, 2); } },
+  { title:'How many 14s in 42? → 3',
+    body:'<code>14 × 3 = 42</code> exactly. Next quotient digit = <b>3</b>, placed one rod right of the first. Quotient zone now reads <code>23</code>.',
+    apply:()=>{ setupDiv(42, 23); } },
+  { title:'Subtract 3 × 14 = 42',
+    body:'<code>42 − 42 = 0</code>. The dividend is fully scooped out — remainder <b>0</b>. The quotient zone holds the answer: <code>23</code>.',
+    apply:()=>{ setupDiv(0, 23); } },
+  { title:'✓ 322 ÷ 14 = 23',
+    body:'The loop was: estimate → place a quotient digit on the left → subtract divisor × digit from the dividend → move one rod right → repeat. If a subtraction ever went negative you\'d lower the quotient digit by one. Any beads left in the dividend zone at the end would be the remainder.',
+    apply:()=>{ setupDiv(0, 23); }, done:true },
+];
+
+/* ---------- Guided Challenge (division with live zones + per-step checking) ---------- */
+let guided = null;
+let guidedLevel = 1;          // 1..5, persists across problems — adaptive difficulty
+const MAX_LEVEL = 5;
+// difficulty bands: bigger divisors & quotient digits = more carries/borrows on the beads
+const LEVELS = {
+  1:{label:'Warm-up'}, 2:{label:'Easy'}, 3:{label:'Steady'}, 4:{label:'Tough'}, 5:{label:'Hard'}
+};
+function randIn([lo, hi]) { return lo + Math.floor(Math.random() * (hi - lo + 1)); }
+
+/* zone layouts shared by the builders */
+const TOTAL_ZONE = [{ key:'b', label:'Running total', rods:[3,8] }];
+const MUL_ZONES  = [{ key:'a', label:'× A', rods:[0,1] }, { key:'c', label:'× B', rods:[3,4] }, { key:'b', label:'Product', rods:[5,8] }];
+const DIV_ZONES  = [{ key:'a', label:'Quotient', rods:[2,3] }, { key:'b', label:'Dividend', rods:[6,8] }];
+const DIV_LVL = {
+  1:{d:[2,3],q1:[1,2],q0:[0,4]}, 2:{d:[3,4],q1:[2,4],q0:[0,9]},
+  3:{d:[4,6],q1:[3,6],q0:[0,9]}, 4:{d:[6,7],q1:[5,8],q0:[1,9]},
+  5:{d:[7,9],q1:[7,9],q0:[2,9]},
+};
+
+const PLACE = ['ones','tens','hundreds','thousands'];
+function digitsAsc(n) { return String(n).split('').reverse().map(Number); }
+
+// Add/subtract b from a, one nonzero digit of b at a time (ones first).
+function addSubSteps(a, b, sign) {
+  const verb = sign > 0 ? 'Add' : 'Subtract';
+  const steps = [];
+  let run = a;
+  digitsAsc(b).forEach((d, k) => {
+    if (d === 0) return;
+    const unit = Math.pow(10, k);
+    const prevDigit = Math.floor(run / unit) % 10;
+    const wraps = sign > 0 ? prevDigit + d >= 10 : prevDigit < d;
+    const note = wraps
+      ? (sign > 0 ? 'This one <b>carries</b>: use the friend of 10.' : 'This one <b>borrows</b>: use the friend of 10.')
+      : (sign > 0 ? 'No carry needed here.' : 'No borrow needed here.');
+    const target = run + sign * d * unit;
+    steps.push({
+      instr: `${verb} the ${PLACE[k]} digit <b>${d}</b> of ${b} (that is ${d * unit}). ${note} Update the green total, then <b>Check ✓</b>.`,
+      check: () => parseInt(readZone(3, 8), 10) === target,
+      want: `total <code>${target}</code>`
+    });
+    run = target;
+  });
+  return steps;
+}
+
+// Multiply a x b, one digit pair at a time, adding each partial product in place.
+function mulSteps(a, b) {
+  const steps = [];
+  const aD = digitsAsc(a), bD = digitsAsc(b);
+  let run = 0;
+  bD.forEach((bi, i) => aD.forEach((aj, j) => {
+    if (bi * aj === 0) return;
+    run += bi * aj * Math.pow(10, i + j);
+    const target = run;
+    steps.push({
+      instr: `Multiply the ${PLACE[i]} digit of B (<b>${bi}</b>) by the ${PLACE[j]} digit of A (<b>${aj}</b>) and add it into the Product zone, starting at the <b>${PLACE[i + j]}</b> rod. Then <b>Check ✓</b>.`,
+      check: () => parseInt(readZone(5, 8), 10) === target
+                && parseInt(readZone(0, 1), 10) === a && parseInt(readZone(3, 4), 10) === b,
+      want: `Product <code>${target}</code> (A and B left unchanged)`
+    });
+  }));
+  return steps;
+}
+
+function buildProblem(L) {
+  const ops = ['add','sub','mul','div'];
+  const op = ops[Math.floor(Math.random() * ops.length)];
+  if (op === 'add') return buildAdd(L);
+  if (op === 'sub') return buildSub(L);
+  if (op === 'mul') return buildMul(L);
+  return buildDiv(L);
+}
+
+function buildAdd(L) {
+  const lo = [0,10,20,50,100,300][L], hi = [0,40,90,400,700,900][L];
+  const a = randIn([lo,hi]), b = randIn([lo,hi]), ans = a + b;
+  return {
+    op:'add', title:`${a} + ${b}`, answer:ans, answerRods:[3,8], zones:TOTAL_ZONE,
+    init:()=>{ placeNum(8, a); },
+    hint:'Green = running total. Add the second number digit by digit, carrying with friends-of-10 where a rod is full.',
+    doneBody:(q)=>`The total reads <code>${q}</code>. Carrying = add 1 to the next rod left, subtract the complement on the current rod.`,
+    steps: addSubSteps(a, b, +1),
+  };
+}
+function buildSub(L) {
+  const lo = [0,10,20,50,100,300][L], hi = [0,40,90,400,700,900][L];
+  let a = randIn([lo,hi]), b = randIn([lo,hi]);
+  if (b > a) { const t = a; a = b; b = t; }
+  if (a === b) a += 1;
+  const ans = a - b;
+  return {
+    op:'sub', title:`${a} − ${b}`, answer:ans, answerRods:[3,8], zones:TOTAL_ZONE,
+    init:()=>{ placeNum(8, a); },
+    hint:'Green = running total. Subtract digit by digit, borrowing with friends-of-10 where a rod is short.',
+    doneBody:(q)=>`The total reads <code>${q}</code>. Borrowing = subtract 1 from the next rod left, add the complement on the current rod.`,
+    steps: addSubSteps(a, b, -1),
+  };
+}
+function buildMul(L) {
+  const aLo = [0,11,13,15,21,31][L], aHi = [0,29,40,60,80,99][L];
+  const a = randIn([aLo,aHi]);
+  let b;
+  if (L >= 4)      b = randIn([11, L === 5 ? 99 : 49]);
+  else if (L === 3) b = randIn([11,19]);
+  else             b = randIn([2, L === 2 ? 9 : 5]);
+  const ans = a * b;
+  return {
+    op:'mul', title:`${a} × ${b}`, answer:ans, answerRods:[5,8], zones:MUL_ZONES,
+    init:()=>{ placeNum(1, a); placeNum(4, b); },
+    hint:'Blue = A, amber = B (both pre-set). Build the answer in the green Product zone — multiply digit pairs and add each in place.',
+    doneBody:(q)=>`The product reads <code>${q}</code>. Each digit-pair product is added in place, shifting one rod left as you step up a place.`,
+    steps: mulSteps(a, b),
+  };
+}
+function buildDiv(L) {
+  const r = DIV_LVL[L];
+  const d = randIn(r.d), q1 = randIn(r.q1), q0 = randIn(r.q0);
+  const q = q1 * 10 + q0, D = q * d, D1 = D - q1 * d * 10;
+  return {
+    op:'div', title:`${D} ÷ ${d}`, answer:q, answerRods:[2,3], zones:DIV_ZONES,
+    init:()=>{ placeNum(8, D); },
+    hint:'Blue = Quotient (build left→right). Green = Dividend (scoop it down).',
+    doneBody:(x)=>`The dividend is scooped out and the quotient reads <code>${x}</code>.`,
+    steps:[
+      { instr:`Divisor is <b>${d}</b>. How many whole times does <code>${d}</code> go into the leading part of <code>${D}</code>? Set that on the <b>left rod of the blue Quotient zone</b>, then <b>Check ✓</b>.`,
+        check:()=> rods[2]===q1 && rods[3]===0 && parseInt(readZone(6,8),10)===D,
+        want:`Quotient <code>${q1}</code>, Dividend <code>${D}</code>` },
+      { instr:`<b>Subtract</b> ${q1} × ${d} from the dividend's left rods, then <b>Check ✓</b>.`,
+        check:()=> rods[2]===q1 && rods[3]===0 && parseInt(readZone(6,8),10)===D1,
+        want:`Quotient <code>${q1}</code>, Dividend <code>${D1}</code>` },
+      { instr:`How many times does <code>${d}</code> go into what's left? Place that digit on the <b>right rod of the Quotient zone</b>, then <b>Check ✓</b>.`,
+        check:()=> rods[2]===q1 && rods[3]===q0 && parseInt(readZone(6,8),10)===D1,
+        want:`Quotient <code>${q1}${q0}</code>, Dividend <code>${D1}</code>` },
+      { instr:`Final move: subtract ${q0} × ${d} from the dividend — it should scoop to <code>0</code>. <b>Check ✓</b>.`,
+        check:()=> rods[2]===q1 && rods[3]===q0 && parseInt(readZone(6,8),10)===0,
+        want:`Quotient <code>${q1}${q0}</code>, Dividend <code>0</code>` },
+    ],
+  };
+}
+
+function newGuided() {
+  guided = buildProblem(guidedLevel);
+  guided.idx = 0; guided.errors = 0;
+  guidedZones = guided.zones;
+  clearNoRender();
+  guided.init();
+  applyZones();
+  renderBeads();
+  renderGuidedPanel();
+}
+function checkGuided() {
+  if (!guided) return;
+  const step = guided.steps[guided.idx];
+  if (step.check()) {
+    if (guided.idx >= guided.steps.length - 1) { adaptLevel(); renderGuidedPanel('done'); }
+    else { guided.idx++; renderGuidedPanel('advanced'); }
+  } else {
+    guided.errors++;
+    renderGuidedPanel('wrong', step.want);
+  }
+}
+// adaptive: clean solve (no errors) → level up; struggled (2+ errors) → level down
+function adaptLevel() {
+  if (guided.errors === 0 && guidedLevel < MAX_LEVEL) guided.leveledUp = true, guidedLevel++;
+  else if (guided.errors >= 2 && guidedLevel > 1) guided.leveledDown = true, guidedLevel--;
+  syncLevelUI();
+}
+// keep the slider + readout in step with guidedLevel
+function syncLevelUI() {
+  levelSlider.value = guidedLevel;
+  levelReadout.textContent = `${guidedLevel} · ${LEVELS[guidedLevel].label}`;
+}
+function renderGuidedPanel(state, revealMsg) {
+  const total = guided.steps.length;
+  const step = guided.steps[guided.idx];
+  const levelTag = `<span class="pill" style="background:var(--accent-dim,#4a9eea)">Level ${guidedLevel} · ${LEVELS[guidedLevel].label}</span>`;
+  let pill, head, body;
+  if (state === 'done') {
+    pill = `<span class="pill done">Solved ✓</span>`;
+    head = `${guided.title} = ${guided.answer}`;
+    let adapt = '';
+    if (guided.leveledUp)   adapt = ` <b style="color:var(--good)">Clean solve — difficulty bumped to Level ${guidedLevel} (${LEVELS[guidedLevel].label}).</b>`;
+    else if (guided.leveledDown) adapt = ` <b style="color:var(--bead-active)">Eased off to Level ${guidedLevel} (${LEVELS[guidedLevel].label}).</b>`;
+    body = guided.doneBody(guided.answer) + adapt + ` Hit <b>New problem</b> for the next one.`;
+  } else {
+    pill = `<span class="pill">Step ${guided.idx + 1} / ${total}</span>`;
+    head = `${guided.title} = ?`;
+    body = step.instr;
+    if (state === 'advanced') body = `<b style="color:var(--good)">✓ Correct.</b> ` + body;
+    if (state === 'wrong')    body = `<b style="color:var(--bead-active)">Not yet</b> — expected ${revealMsg}. Adjust the beads and <b>Check ✓</b> again.<br><br>` + step.instr;
+  }
+  stepPanel.innerHTML = `
+    <div class="step-head">${levelTag}${pill}<span class="step-title">${head}</span></div>
+    <div class="step-body">${body}</div>
+    <div class="hint">${guided.hint} Click beads to move them.</div>`;
+}
+
+function checkFinal() {
+  if (!guided) return;
+  const [s, e] = guided.answerRods;
+  const cur = parseInt(readZone(s, e), 10);
+  if (cur === guided.answer) {
+    guided.idx = guided.steps.length - 1;
+    adaptLevel();
+    renderGuidedPanel('done');
+  } else {
+    guided.errors++;
+    stepPanel.innerHTML = `
+      <div class="step-head"><span class="pill" style="background:var(--bead-active)">Not the answer</span>
+      <span class="step-title">${guided.title} = ?</span></div>
+      <div class="step-body"><b style="color:var(--bead-active)">Not yet</b> — the answer zone reads <code>${cur}</code>, but that isn't ${guided.title}. Set the full answer in the answer zone and press <b>Check final answer</b> again — or work it step by step with <b>Check ✓</b>.</div>
+      <div class="hint">Tip: you can enter the whole answer directly and skip straight to the end.</div>`;
+  }
+}
+
+function currentScript() {
+  return mode === 'add' ? addSteps : mode === 'sub' ? subSteps
+       : mode === 'mult' ? multSteps : mode === 'div' ? divSteps : null;
+}
+
+/* ---------- Addition 58 + 67 (friends-of-10 carrying) ----------
+   whole abacus is the running total; ones on rod 8 */
+function setupNum(v) { clearNoRender(); placeNum(8, v); }
+const addSteps = [
+  { title:'Set the first number: 58',
+    body:'We\'ll add <code>58 + 67</code>. Set <b>58</b> on the right of the abacus — tens rod = 5, ones rod = 8. The abacus holds the running total; we add 67 one digit at a time.',
+    apply:()=>{ setupNum(58); } },
+  { title:'Add 7 to the ones  →  +10 − 3',
+    body:'The ones rod shows <code>8</code> — there\'s no room to push 7 more. Use the <b>friend of 10</b>: <code>+7 = +10 − 3</code>. Add <b>1 to the tens rod</b> and <b>drop 3 from the ones rod</b>. Ones: 8−3=5, tens: 5+1=6. Reads <code>65</code>.',
+    apply:()=>{ setupNum(65); } },
+  { title:'Add 6 to the tens  →  +10 − 4',
+    body:'Now add the <code>6</code> (tens of 67). The tens rod shows <code>6</code> — no room for 6 more. Friend of 10 again, one place up: <code>+6 = +10 − 4</code>. Add <b>1 to the hundreds rod</b> and <b>drop 4 from the tens rod</b>. Tens: 6−4=2, hundreds: 0+1=1. Reads <code>125</code>.',
+    apply:()=>{ setupNum(125); } },
+  { title:'✓ 58 + 67 = 125',
+    body:'Whenever a rod can\'t hold the beads you need, you <b>carry</b>: add 1 to the next rod left and subtract the complement on the current rod. That\'s the whole trick to soroban addition.',
+    apply:()=>{ setupNum(125); }, done:true },
+];
+
+/* ---------- Subtraction 125 − 67 (friends-of-10 borrowing) ---------- */
+const subSteps = [
+  { title:'Set the first number: 125',
+    body:'We\'ll compute <code>125 − 67</code>. Set <b>125</b> on the abacus — hundreds = 1, tens = 2, ones = 5. We subtract 67 one digit at a time.',
+    apply:()=>{ setupNum(125); } },
+  { title:'Subtract 7 from the ones  →  −10 + 3',
+    body:'The ones rod shows <code>5</code> — you can\'t take 7 away. <b>Borrow</b> with the friend of 10: <code>−7 = −10 + 3</code>. <b>Drop 1 from the tens rod</b> and <b>add 3 to the ones rod</b>. Ones: 5+3=8, tens: 2−1=1. Reads <code>118</code>.',
+    apply:()=>{ setupNum(118); } },
+  { title:'Subtract 6 from the tens  →  −10 + 4',
+    body:'Now subtract the <code>6</code> (tens of 67). The tens rod shows <code>1</code> — not enough. Borrow one place up: <code>−6 = −10 + 4</code>. <b>Drop 1 from the hundreds rod</b> and <b>add 4 to the tens rod</b>. Tens: 1+4=5, hundreds: 1−1=0. Reads <code>58</code>.',
+    apply:()=>{ setupNum(58); } },
+  { title:'✓ 125 − 67 = 58',
+    body:'Subtraction mirrors addition: when a rod doesn\'t have enough beads to remove, you <b>borrow</b> — subtract 1 from the next rod left and add the complement on the current rod.',
+    apply:()=>{ setupNum(58); }, done:true },
+];
+
+function renderStep() {
+  const script = currentScript();
+  if (!script) return;
+  const step = script[stepIndex];
+  step.apply();
+  renderBeads();
+
+  const pillClass = step.done ? 'pill done' : 'pill';
+  const pillText = step.done ? 'Done' : `Step ${stepIndex + 1} / ${script.length}`;
+  stepPanel.innerHTML = `
+    <div class="step-head">
+      <span class="${pillClass}">${pillText}</span>
+      <span class="step-title">${step.title}</span>
+    </div>
+    <div class="step-body">${step.body}</div>
+    <div class="hint">Use <b>Next step ›</b> and <b>‹ Back</b> to move through the method.</div>`;
+
+  prevBtn.disabled = stepIndex <= 0;
+  nextBtn.disabled = stepIndex >= script.length - 1;
+}
+
+/* ---------- Mode switching ---------- */
+function setMode(m) {
+  mode = m;
+  document.querySelectorAll('.mode-btn').forEach(b =>
+    b.classList.toggle('active', b.dataset.mode === m));
+
+  const scripted = (m === 'add' || m === 'sub' || m === 'mult' || m === 'div');
+  const isChallenge = (m === 'challenge');
+  nextBtn.style.display = scripted ? '' : 'none';
+  prevBtn.style.display = scripted ? '' : 'none';
+  checkBtn.style.display = isChallenge ? '' : 'none';
+  finalBtn.style.display = isChallenge ? '' : 'none';
+  newBtn.style.display = isChallenge ? '' : 'none';
+  levelCtl.style.display = isChallenge ? '' : 'none';
+
+  applyZones();
+
+  if (scripted) {
+    stepIndex = 0;
+    renderStep();
+  } else if (isChallenge) {
+    syncLevelUI();
+    newGuided();
+  } else {
+    clearAll();
+    stepPanel.innerHTML = `
+      <div class="free-note">
+        <strong>Free play.</strong> Click any bead to toggle it toward or away from the bar.
+        Lower beads = 1 each, the top bead = 5.
+        Pick <strong>23 × 14</strong> or <strong>322 ÷ 14</strong> to watch the method play out —
+        the colored bands show the soroban zones:
+        <span class="legend" style="background:var(--zoneA)"></span>operand/quotient,
+        <span class="legend" style="background:var(--zoneC)"></span>multiplier,
+        <span class="legend" style="background:var(--zoneB)"></span>product/dividend.
+      </div>`;
+  }
+}
+
+/* ---------- Wiring ---------- */
+document.querySelectorAll('.mode-btn').forEach(b =>
+  b.addEventListener('click', () => setMode(b.dataset.mode)));
+nextBtn.addEventListener('click', () => {
+  const s = currentScript(); if (!s) return;
+  if (stepIndex < s.length - 1) { stepIndex++; renderStep(); }
+});
+prevBtn.addEventListener('click', () => {
+  const s = currentScript(); if (!s) return;
+  if (stepIndex > 0) { stepIndex--; renderStep(); }
+});
+checkBtn.addEventListener('click', checkGuided);
+finalBtn.addEventListener('click', checkFinal);
+newBtn.addEventListener('click', newGuided);
+levelSlider.addEventListener('input', () => {
+  guidedLevel = parseInt(levelSlider.value, 10);
+  levelReadout.textContent = `${guidedLevel} · ${LEVELS[guidedLevel].label}`;
+  if (mode === 'challenge') newGuided();   // regenerate a fresh problem at the chosen level
+});
+resetBtn.addEventListener('click', () => {
+  if (mode === 'free') clearAll();
+  else if (mode === 'challenge') { clearNoRender(); guided.init(); guided.idx = 0; renderBeads(); renderGuidedPanel(); }
+  else { stepIndex = 0; renderStep(); }
+});
+
+/* ---------- Init ---------- */
+buildAbacus();
+clearAll();
+setMode('free');
+</script>
+</body>
+</html>
