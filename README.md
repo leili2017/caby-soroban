@@ -25,8 +25,15 @@ Lessons are data. To add one, append an entry to `LESSONS` in `lessons.js` with 
 - **Progress** is saved in the browser (`localStorage`), per device. Speech uses the browser's
   built-in voice.
 
-To use it on an iPad, open `kids/index.html` through Safari (for example via AirDrop and Files, or
-static hosting). Add to Home Screen for a full-screen app.
+To use it on an iPad, send `kids/capy-soroban.html` (one self-contained file) to the iPad with
+AirDrop or Files and open it in Safari. Add to Home Screen for a full-screen app.
+
+`kids/index.html` is the development entry point and needs its sibling files. Some previewers
+load it blank for that reason. After editing any file in `kids/`, regenerate the single file:
+
+```sh
+node scripts/build-kids.js
+```
 
 ## Adult walkthroughs (abacus.html)
 
