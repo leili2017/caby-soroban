@@ -1,7 +1,34 @@
 # Interactive Soroban
 
-A single-file, dependency-free web app for learning the Japanese abacus (soroban).
-Open `abacus.html` in any browser. There is no server, build step, or install.
+Two apps live in this repo. Both are static files with no server, build step, or install.
+
+| App | Path | For |
+|---|---|---|
+| **Capy Soroban** | `kids/index.html` | A young child learning the soroban, with a capybara guide. Spoken prompts, no reading needed. Built to run alongside a physical abacus. |
+| **Adult walkthroughs** | `abacus.html` | Worked examples and a guided challenge for add, subtract, multiply, and divide. |
+
+## Capy Soroban (kids/)
+
+Files: `soroban.js` (bead logic and SVG abacus), `lessons.js` (lesson data), `runner.js`
+(session scoring and saved progress), `app.js` (screens, speech, parent area), `style.css`.
+
+Lessons are data. To add one, append an entry to `LESSONS` in `lessons.js` with an `id`,
+`module`, `rods`, `count`, `mastery`, and a `gen(rng)` function that returns its items.
+
+- **Module 1, Meet the soroban:** parts, bottom beads (0 to 4), top bead (5 to 9), reading one rod.
+- **Module 2, Tens and ones:** tens, tens and ones together, reading two rods, counting up and down.
+- **Scoring:** only first-try answers count. A missed item comes back once at the end as practice.
+  A lesson opens once the previous one is passed.
+- **Hint:** after two misses on one item, dotted circles show where the beads go.
+- **Parent area:** press and hold the small gear for about 1.2 seconds. Shows plays and best
+  scores, and can show the answer, skip an item, toggle sound, unlock all lessons, or reset.
+- **Progress** is saved in the browser (`localStorage`), per device. Speech uses the browser's
+  built-in voice.
+
+To use it on an iPad, open `kids/index.html` through Safari (for example via AirDrop and Files, or
+static hosting). Add to Home Screen for a full-screen app.
+
+## Adult walkthroughs (abacus.html)
 
 ## Modes
 
@@ -34,7 +61,8 @@ the zones for each operation.
 The logic can be checked headlessly with Node (no browser needed):
 
 ```sh
-node test/harness.js
+node test/harness.js     # adult app: 1,500 generated problems
+node test/kids.test.js   # kids app: bead logic, lesson data, scoring, saved progress
 ```
 
 It loads the page script against a stubbed DOM, generates 1,500 problems across all
