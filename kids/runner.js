@@ -39,7 +39,7 @@
 
   // ---------- progress ----------
   const KEY = 'capy.progress.v1';
-  const fresh = () => ({ lessons: {}, unlockAll: false, sound: true });
+  const fresh = () => ({ lessons: {}, unlockAll: false, sound: true, voice: '' });
 
   function load(storage) {
     try {

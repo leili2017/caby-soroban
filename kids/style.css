@@ -109,6 +109,10 @@ button:focus-visible { outline: 4px solid var(--gold); outline-offset: 2px; }
 .pbtn { background: #f3e8cf; border-radius: 14px; padding: 12px 18px; font-size: 16px; font-weight: 700; }
 .pbtn.danger { color: var(--bad); }
 .pbtn.go { background: var(--brand); color: #fff; }
+.voice { display: flex; align-items: center; gap: 10px; margin: 6px 0 4px; }
+.voice label { font-weight: 700; }
+.voice select { flex: 1; min-width: 0; font: inherit; font-size: 16px; padding: 10px; border-radius: 12px; border: 2px solid #eee2c8; background: #fff; }
+.panel .tip { font-size: 14px; margin: 0 0 10px; }
 
 @media (max-width: 700px), (max-height: 520px) {
   .bubble { font-size: 44px; } .big { font-size: 26px; padding: 8px 36px; min-height: 64px; }

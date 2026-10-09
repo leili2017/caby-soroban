@@ -4,6 +4,7 @@ const path = require('path');
 const S = require(path.join(__dirname, '..', 'kids', 'soroban.js'));
 const L = require(path.join(__dirname, '..', 'kids', 'lessons.js'));
 const R = require(path.join(__dirname, '..', 'kids', 'runner.js'));
+const T = require(path.join(__dirname, '..', 'kids', 'speech.js'));
 
 let passed = 0;
 function test(name, fn) {
@@ -255,6 +256,89 @@ test('lessons unlock in order', () => {
   assert.strictEqual(R.unlocked(p, L.ORDER, '1.3'), false);
   p.unlockAll = true;
   assert.strictEqual(R.unlocked(p, L.ORDER, '2.4'), true);
+});
+
+// ---------- voice and phrases ----------
+const V = (name, lang, local = true) => ({ name, lang, localService: local });
+test('voice ranking prefers premium and enhanced, skips novelty and non-English', () => {
+  const voices = [
+    V('Zarvox', 'en-US'), V('Albert', 'en-US'), V('Amelie', 'fr-FR'), V('Samantha', 'en-US'),
+    V('Ava (Enhanced)', 'en-US'), V('Zoe (Premium)', 'en-US'), V('Fred', 'en-US'),
+  ];
+  const ranked = T.rank(voices).map(v => v.name);
+  assert.strictEqual(ranked[0], 'Zoe (Premium)');
+  assert.strictEqual(ranked[1], 'Ava (Enhanced)');
+  assert.ok(ranked.includes('Samantha'));
+  for (const bad of ['Zarvox', 'Albert', 'Amelie', 'Fred']) assert.ok(!ranked.includes(bad), bad);
+});
+test('a saved voice wins while installed, otherwise fall back to the best', () => {
+  const voices = [V('Samantha', 'en-US'), V('Ava (Enhanced)', 'en-US')];
+  assert.strictEqual(T.pick(voices, 'Samantha').name, 'Samantha');
+  assert.strictEqual(T.pick(voices, 'Gone Voice').name, 'Ava (Enhanced)');
+  assert.strictEqual(T.pick(voices, '').name, 'Ava (Enhanced)');
+  assert.strictEqual(T.pick([], 'x'), null);
+  assert.strictEqual(T.pick([V('Amelie', 'fr-FR')], ''), null);
+});
+test('praise pools are large and free of duplicates', () => {
+  for (const [name, pool] of Object.entries(T.pools)) {
+    assert.strictEqual(new Set(pool).size, pool.length, `${name} has duplicates`);
+    pool.forEach(p => assert.ok(p.length > 0 && p.length < 60, `${name}: ${p}`));
+  }
+  assert.ok(T.pools.FIRST.length >= 15 && T.pools.RETRY.length >= 5 && T.pools.OOPS.length >= 5);
+});
+test('the same praise never repeats back to back or within the last few', () => {
+  for (let sd = 0; sd < 50; sd++) {
+    const p = T.createPhrases(L.mulberry32(sd));
+    const out = Array.from({ length: 300 }, () => p.praise({ first: true, streak: 1 }));
+    for (let i = 1; i < out.length; i++) assert.notStrictEqual(out[i], out[i - 1], `seed ${sd} repeated at ${i}`);
+    for (let i = 4; i < out.length; i++) {
+      const dupes = out.slice(i - 4, i).includes(out[i]);
+      if (T.pools.FIRST.includes(out[i]) && T.pools.FIRST.length > 5) assert.ok(!dupes, `seed ${sd} reused "${out[i]}" within 4`);
+    }
+  }
+});
+test('praise uses a large share of the pool over a session', () => {
+  const p = T.createPhrases(L.mulberry32(1));
+  const seen = new Set(Array.from({ length: 100 }, () => p.praise({ first: true, streak: 1 })));
+  assert.ok(seen.size >= 15, `only ${seen.size} different phrases`);
+});
+test('retry praise differs from first-try praise and never claims perfection', () => {
+  const p = T.createPhrases(L.mulberry32(2));
+  for (let i = 0; i < 100; i++) {
+    const r = p.praise({ first: false, streak: 5, n: 7 });
+    assert.ok(T.pools.RETRY.includes(r), r);
+  }
+});
+test('streak praise appears every third first-try answer', () => {
+  const p = T.createPhrases(L.mulberry32(3));
+  assert.ok(T.pools.STREAK.includes(p.praise({ first: true, streak: 3 })));
+  assert.ok(T.pools.STREAK.includes(p.praise({ first: true, streak: 6 })));
+  assert.ok(!T.pools.STREAK.includes(p.praise({ first: true, streak: 4 })));
+});
+test('number praise fills the number in and leaves no placeholder', () => {
+  let withNumber = 0;
+  const p = T.createPhrases(L.mulberry32(4));
+  for (let i = 0; i < 400; i++) {
+    const r = p.praise({ first: true, streak: 1, n: 42 });
+    assert.ok(!r.includes('{n}'), r);
+    if (r.includes('42')) withNumber++;
+  }
+  assert.ok(withNumber > 40 && withNumber < 250, `number used ${withNumber} of 400`);
+  assert.ok(!T.createPhrases(L.mulberry32(5)).praise({ first: true, streak: 1 }).includes('undefined'));
+});
+test('oops, help and done phrases rotate and match their outcome', () => {
+  const p = T.createPhrases(L.mulberry32(6));
+  const o = Array.from({ length: 40 }, () => p.oops());
+  for (let i = 1; i < o.length; i++) assert.notStrictEqual(o[i], o[i - 1]);
+  assert.ok(T.pools.HELP.includes(p.help()));
+  assert.ok(T.pools.DONE_PASS.includes(p.done(true)));
+  assert.ok(T.pools.DONE_TRY.includes(p.done(false)));
+});
+test('saved progress keeps a chosen voice and defaults to none', () => {
+  const st = memory(), pr = R.load(st);
+  assert.strictEqual(pr.voice, '');
+  pr.voice = 'Ava (Enhanced)'; R.save(st, pr);
+  assert.strictEqual(R.load(st).voice, 'Ava (Enhanced)');
 });
 
 console.log(`${passed} tests passed${process.exitCode ? ', with failures' : ''}`);

@@ -10,7 +10,7 @@ Two apps live in this repo. Both are static files with no server, build step, or
 ## Capy Soroban (kids/)
 
 Files: `soroban.js` (bead logic and SVG abacus), `lessons.js` (lesson data), `runner.js`
-(session scoring and saved progress), `app.js` (screens, speech, parent area), `style.css`.
+(session scoring and saved progress), `speech.js` (voice choice and phrases), `app.js` (screens, speech, parent area), `style.css`.
 
 Lessons are data. To add one, append an entry to `LESSONS` in `lessons.js` with an `id`,
 `module`, `rods`, `count`, `mastery`, and a `gen(rng)` function that returns its items.
@@ -24,7 +24,9 @@ Lessons are data. To add one, append an entry to `LESSONS` in `lessons.js` with 
 - **Parent area:** press and hold the small gear for about 1.2 seconds. Shows plays and best
   scores, and can show the answer, skip an item, toggle sound, unlock all lessons, or reset.
 - **Progress** is saved in the browser (`localStorage`), per device. Speech uses the browser's
-  built-in voice.
+  built-in voice. The app picks the best English voice installed (Premium and Enhanced voices rank
+highest) and the parent area has a voice picker. Praise comes from pools in `speech.js` that rotate
+so the same line is not heard twice close together; add lines there to extend them.
 
 To use it on an iPad, send `kids/capy-soroban.html` (one self-contained file) to the iPad with
 AirDrop or Files and open it in Safari. Add to Home Screen for a full-screen app.

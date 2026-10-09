@@ -11,12 +11,18 @@
   const persist = () => Runner.save(store, progress);
 
   // ---------- speech and sound ----------
+  const phrases = Talk.createPhrases(Math.random);
+  const synth = 'speechSynthesis' in window ? window.speechSynthesis : null;
+  const allVoices = () => (synth && synth.getVoices ? synth.getVoices() : []);
+  const voice = () => Talk.pick(allVoices(), progress.voice);
   function say(text) {
-    if (!progress.sound || !('speechSynthesis' in window)) return;
-    speechSynthesis.cancel();
+    if (!progress.sound || !synth) return;
+    synth.cancel();
     const u = new SpeechSynthesisUtterance(text);
-    u.rate = 0.85; u.pitch = 1.15;
-    speechSynthesis.speak(u);
+    const v = voice();
+    if (v) { u.voice = v; u.lang = v.lang; }
+    u.rate = 0.9; u.pitch = 1;   // natural pitch: raising it is what makes voices sound synthetic
+    synth.speak(u);
   }
   let ac;
   function chime(good) {
@@ -32,8 +38,7 @@
       });
     } catch (e) { /* audio is optional */ }
   }
-  const PRAISE = ['Great job!', 'Yes!', 'You did it!', 'Wonderful!', 'Super!'];
-  const praise = () => PRAISE[Math.floor(Math.random() * PRAISE.length)];
+  let streak = 0;
 
   // ---------- capybara ----------
   const capy = (mood = '') => `
@@ -81,6 +86,7 @@
   function play(id) {
     const lesson = byId[id];
     session = Runner.start(lesson, mulberry32((Date.now() ^ (Math.random() * 1e9)) >>> 0));
+    streak = 0;
     app.innerHTML = `
       <section class="lesson">
         <div class="top">
@@ -165,14 +171,18 @@
     if (locked) return;
     clearTimeout(idleTimer);
     const it = current;
+    const first = session.attempts === 0 && !it.retry;   // read before submit() resets it
     const r = Runner.submit(session, ok);
     if (r.outcome === 'correct') {
       locked = true; sb.lock(true);
-      setMood('happy'); chime(true); say(praise());
-      itemTimer = setTimeout(() => (r.done ? finish() : item()), 1300);
+      streak = first ? streak + 1 : 0;
+      setMood('happy'); chime(true);
+      say(phrases.praise({ first, streak, n: typeof it.answer === 'number' ? it.answer : undefined }));
+      itemTimer = setTimeout(() => (r.done ? finish() : item()), 1500);
     } else {
+      streak = 0;
       setMood('oops'); chime(false);
-      say(r.outcome === 'hint' ? 'Let me help. Look at the dotted circles.' : 'Almost! Try again.');
+      say(r.outcome === 'hint' ? phrases.help() : phrases.oops());
       if (r.outcome === 'hint') hint(it);
       setTimeout(() => setMood(''), 900);
     }
@@ -195,7 +205,7 @@
         </div>
       </section>`;
     chime(res.passed);
-    say(res.passed ? 'Amazing! You did it!' : 'Good practice! Let us try again.');
+    say(phrases.done(res.passed));
     document.getElementById('r-again').addEventListener('click', () => play(session.lesson.id));
     document.getElementById('r-home').addEventListener('click', home);
     const n = document.getElementById('r-next');
@@ -217,11 +227,20 @@
       return `<tr><td>${l.id} ${l.title}</td><td>${p ? p.plays : 0}</td><td>${p ? `${p.best}/${l.count}` : '-'}</td><td>${p && p.passed ? 'passed' : '-'}</td></tr>`;
     }).join('');
     parentEl.hidden = false;
+    const ranked = Talk.rank(allVoices());
+    const current_ = voice();
+    const voiceRow = ranked.length
+      ? `<div class="voice"><label for="p-voice">Voice</label>
+          <select id="p-voice">${ranked.map(v => `<option value="${v.name.replace(/"/g, '&quot;')}" ${current_ && v.name === current_.name ? 'selected' : ''}>${v.name} (${v.lang})</option>`).join('')}</select>
+          <button class="pbtn" id="p-hear">Hear it</button></div>
+         <p class="tip">For a more natural voice, install an Enhanced or Premium one: Settings > Accessibility > Spoken Content > Voices.</p>`
+      : '<p class="tip">No English voices were found on this device.</p>';
     parentEl.innerHTML = `
       <div class="panel" role="dialog" aria-label="Parent area">
         <h2>Parent area</h2>
         <p>Best score counts only first-try answers. A lesson opens once the one before it is passed.</p>
         <table><tr><th>Game</th><th>Plays</th><th>Best</th><th></th></tr>${rows}</table>
+        ${voiceRow}
         <div class="row">
           ${inLesson && current ? '<button class="pbtn go" id="p-show">Show answer</button><button class="pbtn" id="p-skip">Skip this one</button>' : ''}
           <button class="pbtn" id="p-sound">Sound: ${progress.sound ? 'on' : 'off'}</button>
@@ -233,6 +252,10 @@
     const $ = id => document.getElementById(id);
     const close = () => { parentEl.hidden = true; parentEl.innerHTML = ''; };
     $('p-close').addEventListener('click', close);
+    if ($('p-voice')) {
+      $('p-voice').addEventListener('change', e => { progress.voice = e.target.value; persist(); say(phrases.praise({ first: true })); });
+      $('p-hear').addEventListener('click', () => say(phrases.praise({ first: true })));
+    }
     $('p-sound').addEventListener('click', () => { progress.sound = !progress.sound; persist(); openParent(); });
     $('p-unlock').addEventListener('click', () => { progress.unlockAll = !progress.unlockAll; persist(); openParent(); });
     $('p-reset').addEventListener('click', () => {

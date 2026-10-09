@@ -119,6 +119,10 @@ button:focus-visible { outline: 4px solid var(--gold); outline-offset: 2px; }
 .pbtn { background: #f3e8cf; border-radius: 14px; padding: 12px 18px; font-size: 16px; font-weight: 700; }
 .pbtn.danger { color: var(--bad); }
 .pbtn.go { background: var(--brand); color: #fff; }
+.voice { display: flex; align-items: center; gap: 10px; margin: 6px 0 4px; }
+.voice label { font-weight: 700; }
+.voice select { flex: 1; min-width: 0; font: inherit; font-size: 16px; padding: 10px; border-radius: 12px; border: 2px solid #eee2c8; background: #fff; }
+.panel .tip { font-size: 14px; margin: 0 0 10px; }
 
 @media (max-width: 700px), (max-height: 520px) {
   .bubble { font-size: 44px; } .big { font-size: 26px; padding: 8px 36px; min-height: 64px; }
@@ -499,7 +503,7 @@ button:focus-visible { outline: 4px solid var(--gold); outline-offset: 2px; }
 
   // ---------- progress ----------
   const KEY = 'capy.progress.v1';
-  const fresh = () => ({ lessons: {}, unlockAll: false, sound: true });
+  const fresh = () => ({ lessons: {}, unlockAll: false, sound: true, voice: '' });
 
   function load(storage) {
     try {
@@ -534,6 +538,96 @@ button:focus-visible { outline: 4px solid var(--gold); outline-offset: 2px; }
 
 </script>
 <script>
+// Voice choice and spoken phrases. No DOM, so it is fully testable.
+(function (root, factory) {
+  const api = factory();
+  if (typeof module === 'object' && module.exports) module.exports = api;
+  else root.Talk = api;
+})(typeof self !== 'undefined' ? self : this, function () {
+  'use strict';
+
+  // ---------- voices ----------
+  // Browsers expose whatever voices the device has. Enhanced and Premium downloads sound far
+  // more natural than the compact defaults, and some macOS voices are novelty sounds.
+  const NOVELTY = /albert|bad news|bahh|bells|boing|bubbles|cellos|deranged|good news|hysterical|jester|junior|kathy|organ|ralph|superstar|trinoids|whisper|zarvox|fred\b/i;
+  const FRIENDLY = ['Ava', 'Samantha', 'Allison', 'Serena', 'Nicky', 'Karen', 'Moira', 'Tessa', 'Susan', 'Zoe', 'Daniel', 'Evan'];
+
+  function score(v) {
+    if (!/^en([-_]|$)/i.test(v.lang || '')) return -1;
+    if (NOVELTY.test(v.name)) return -1;
+    let s = 0;
+    if (/premium/i.test(v.name)) s += 70;
+    else if (/enhanced|neural|natural|siri/i.test(v.name)) s += 50;
+    if (/en[-_]US/i.test(v.lang)) s += 10;
+    else if (/en[-_](GB|AU|CA|IE|ZA)/i.test(v.lang)) s += 6;
+    const i = FRIENDLY.findIndex(n => v.name.startsWith(n));
+    if (i >= 0) s += 12 - i;
+    if (v.localService) s += 3;
+    return s;
+  }
+  const rank = voices =>
+    (voices || []).map(v => ({ v, s: score(v) })).filter(x => x.s >= 0)
+      .sort((a, b) => b.s - a.s || a.v.name.localeCompare(b.v.name)).map(x => x.v);
+  // A saved choice wins if that voice is still installed; otherwise the best-ranked English voice.
+  function pick(voices, savedName) {
+    const saved = savedName && (voices || []).find(v => v.name === savedName);
+    return saved || rank(voices)[0] || null;
+  }
+
+  // ---------- phrases ----------
+  const FIRST = [
+    'Yes!', 'You did it!', 'Great job!', 'Wonderful!', 'Super!', 'Nice work!', 'Well done!',
+    'That is right!', 'Perfect!', 'Awesome!', 'Hooray!', 'Look at you go!', 'Fantastic!',
+    'Brilliant!', 'High five!', 'Just right!', 'You are so good at this!', 'Exactly!',
+  ];
+  const WITH_NUMBER = ['Yes, {n}!', 'That is {n}!', '{n}! You got it!', 'Perfect, {n}!', 'Great job, {n}!'];
+  const RETRY = [
+    'There it is!', 'You got it!', 'Yes! You kept going.', 'Good thinking!', 'See? You can do it.',
+    'That is it! Nice try.', 'You figured it out!',
+  ];
+  const STREAK = ['You are on a roll!', 'Wow, so many right!', 'You are on fire!', 'Keep it up!'];
+  const OOPS = [
+    'Almost! Try again.', 'So close! Try once more.', 'Not quite. You can do it.',
+    'Give it another go.', 'Nearly there. Try again.', 'Oops! Let us try again.',
+  ];
+  const HELP = [
+    'Let me help. Follow the dotted circles.', 'Here is a little help. Look at the dotted circles.',
+    'Try matching the dotted circles.',
+  ];
+  const DONE_PASS = ['Amazing! You did it!', 'Hooray! What a great job!', 'Wow, you are a soroban star!', 'Fantastic work today!'];
+  const DONE_TRY = ['Good practice! Let us try again.', 'Nice try! Practice makes it easier.', 'You worked hard! Let us play again.'];
+
+  // Returns phrases that never repeat any of the last few used from the same pool.
+  function createPhrases(rng) {
+    const recent = {};
+    function draw(name, pool) {
+      const seen = recent[name] || (recent[name] = []);
+      const keep = Math.min(4, pool.length - 1);
+      const fresh = pool.filter(p => !seen.includes(p));
+      const out = fresh[Math.floor(rng() * fresh.length)];
+      seen.push(out);
+      while (seen.length > keep) seen.shift();
+      return out;
+    }
+    return {
+      // ctx: { first: answered on the first try, streak: first-try answers in a row, n: the number, if any }
+      praise(ctx = {}) {
+        if (!ctx.first) return draw('retry', RETRY);
+        if (ctx.streak >= 3 && ctx.streak % 3 === 0) return draw('streak', STREAK);
+        if (ctx.n !== undefined && ctx.n !== null && rng() < 0.35) return draw('num', WITH_NUMBER).replace('{n}', ctx.n);
+        return draw('first', FIRST);
+      },
+      oops: () => draw('oops', OOPS),
+      help: () => draw('help', HELP),
+      done: passed => (passed ? draw('pass', DONE_PASS) : draw('try', DONE_TRY)),
+    };
+  }
+
+  return { rank, pick, createPhrases, pools: { FIRST, WITH_NUMBER, RETRY, STREAK, OOPS, HELP, DONE_PASS, DONE_TRY } };
+});
+
+</script>
+<script>
 // Capy Soroban: screens, speech, and the parent panel. Logic lives in soroban.js, lessons.js, runner.js.
 (function () {
   'use strict';
@@ -547,12 +641,18 @@ button:focus-visible { outline: 4px solid var(--gold); outline-offset: 2px; }
   const persist = () => Runner.save(store, progress);
 
   // ---------- speech and sound ----------
+  const phrases = Talk.createPhrases(Math.random);
+  const synth = 'speechSynthesis' in window ? window.speechSynthesis : null;
+  const allVoices = () => (synth && synth.getVoices ? synth.getVoices() : []);
+  const voice = () => Talk.pick(allVoices(), progress.voice);
   function say(text) {
-    if (!progress.sound || !('speechSynthesis' in window)) return;
-    speechSynthesis.cancel();
+    if (!progress.sound || !synth) return;
+    synth.cancel();
     const u = new SpeechSynthesisUtterance(text);
-    u.rate = 0.85; u.pitch = 1.15;
-    speechSynthesis.speak(u);
+    const v = voice();
+    if (v) { u.voice = v; u.lang = v.lang; }
+    u.rate = 0.9; u.pitch = 1;   // natural pitch: raising it is what makes voices sound synthetic
+    synth.speak(u);
   }
   let ac;
   function chime(good) {
@@ -568,8 +668,7 @@ button:focus-visible { outline: 4px solid var(--gold); outline-offset: 2px; }
       });
     } catch (e) { /* audio is optional */ }
   }
-  const PRAISE = ['Great job!', 'Yes!', 'You did it!', 'Wonderful!', 'Super!'];
-  const praise = () => PRAISE[Math.floor(Math.random() * PRAISE.length)];
+  let streak = 0;
 
   // ---------- capybara ----------
   const capy = (mood = '') => `
@@ -617,6 +716,7 @@ button:focus-visible { outline: 4px solid var(--gold); outline-offset: 2px; }
   function play(id) {
     const lesson = byId[id];
     session = Runner.start(lesson, mulberry32((Date.now() ^ (Math.random() * 1e9)) >>> 0));
+    streak = 0;
     app.innerHTML = `
       <section class="lesson">
         <div class="top">
@@ -701,14 +801,18 @@ button:focus-visible { outline: 4px solid var(--gold); outline-offset: 2px; }
     if (locked) return;
     clearTimeout(idleTimer);
     const it = current;
+    const first = session.attempts === 0 && !it.retry;   // read before submit() resets it
     const r = Runner.submit(session, ok);
     if (r.outcome === 'correct') {
       locked = true; sb.lock(true);
-      setMood('happy'); chime(true); say(praise());
-      itemTimer = setTimeout(() => (r.done ? finish() : item()), 1300);
+      streak = first ? streak + 1 : 0;
+      setMood('happy'); chime(true);
+      say(phrases.praise({ first, streak, n: typeof it.answer === 'number' ? it.answer : undefined }));
+      itemTimer = setTimeout(() => (r.done ? finish() : item()), 1500);
     } else {
+      streak = 0;
       setMood('oops'); chime(false);
-      say(r.outcome === 'hint' ? 'Let me help. Look at the dotted circles.' : 'Almost! Try again.');
+      say(r.outcome === 'hint' ? phrases.help() : phrases.oops());
       if (r.outcome === 'hint') hint(it);
       setTimeout(() => setMood(''), 900);
     }
@@ -731,7 +835,7 @@ button:focus-visible { outline: 4px solid var(--gold); outline-offset: 2px; }
         </div>
       </section>`;
     chime(res.passed);
-    say(res.passed ? 'Amazing! You did it!' : 'Good practice! Let us try again.');
+    say(phrases.done(res.passed));
     document.getElementById('r-again').addEventListener('click', () => play(session.lesson.id));
     document.getElementById('r-home').addEventListener('click', home);
     const n = document.getElementById('r-next');
@@ -753,11 +857,20 @@ button:focus-visible { outline: 4px solid var(--gold); outline-offset: 2px; }
       return `<tr><td>${l.id} ${l.title}</td><td>${p ? p.plays : 0}</td><td>${p ? `${p.best}/${l.count}` : '-'}</td><td>${p && p.passed ? 'passed' : '-'}</td></tr>`;
     }).join('');
     parentEl.hidden = false;
+    const ranked = Talk.rank(allVoices());
+    const current_ = voice();
+    const voiceRow = ranked.length
+      ? `<div class="voice"><label for="p-voice">Voice</label>
+          <select id="p-voice">${ranked.map(v => `<option value="${v.name.replace(/"/g, '&quot;')}" ${current_ && v.name === current_.name ? 'selected' : ''}>${v.name} (${v.lang})</option>`).join('')}</select>
+          <button class="pbtn" id="p-hear">Hear it</button></div>
+         <p class="tip">For a more natural voice, install an Enhanced or Premium one: Settings > Accessibility > Spoken Content > Voices.</p>`
+      : '<p class="tip">No English voices were found on this device.</p>';
     parentEl.innerHTML = `
       <div class="panel" role="dialog" aria-label="Parent area">
         <h2>Parent area</h2>
         <p>Best score counts only first-try answers. A lesson opens once the one before it is passed.</p>
         <table><tr><th>Game</th><th>Plays</th><th>Best</th><th></th></tr>${rows}</table>
+        ${voiceRow}
         <div class="row">
           ${inLesson && current ? '<button class="pbtn go" id="p-show">Show answer</button><button class="pbtn" id="p-skip">Skip this one</button>' : ''}
           <button class="pbtn" id="p-sound">Sound: ${progress.sound ? 'on' : 'off'}</button>
@@ -769,6 +882,10 @@ button:focus-visible { outline: 4px solid var(--gold); outline-offset: 2px; }
     const $ = id => document.getElementById(id);
     const close = () => { parentEl.hidden = true; parentEl.innerHTML = ''; };
     $('p-close').addEventListener('click', close);
+    if ($('p-voice')) {
+      $('p-voice').addEventListener('change', e => { progress.voice = e.target.value; persist(); say(phrases.praise({ first: true })); });
+      $('p-hear').addEventListener('click', () => say(phrases.praise({ first: true })));
+    }
     $('p-sound').addEventListener('click', () => { progress.sound = !progress.sound; persist(); openParent(); });
     $('p-unlock').addEventListener('click', () => { progress.unlockAll = !progress.unlockAll; persist(); openParent(); });
     $('p-reset').addEventListener('click', () => {
