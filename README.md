@@ -4,13 +4,18 @@ Two apps live in this repo. Both are static files with no server, build step, or
 
 | App | Path | For |
 |---|---|---|
-| **Capy Soroban** | `kids/index.html` | A young child learning the soroban, with a capybara guide. Spoken prompts, no reading needed. Built to run alongside a physical abacus. |
+| **Soroban Friends** | `kids/index.html` | A young child learning the soroban, with a capybara guide. Spoken prompts, no reading needed. Built to run alongside a physical abacus. |
 | **Adult walkthroughs** | `abacus.html` | Worked examples and a guided challenge for add, subtract, multiply, and divide. |
 
-## Capy Soroban (kids/)
+## Soroban Friends (kids/)
+
+Each module has its own friend and colours (`themes.js`): Capy the capybara, Hedgie the hedgehog,
+Axo the axolotl, Fenny the fennec fox, Hammy the hamster, Bun the rabbit, and Draco the green dragon.
+Module 1 uses the first, module 2 the next, and so on, wrapping after the seventh. Only modules 1
+and 2 exist so far, so only Capy and Hedgie appear until more modules are added.
 
 Files: `soroban.js` (bead logic and SVG abacus), `lessons.js` (lesson data), `runner.js`
-(session scoring and saved progress), `speech.js` (voice choice and phrases), `app.js` (screens, speech, parent area), `style.css`.
+(session scoring and saved progress), `speech.js` (voice choice and phrases), `themes.js` (friends and colours), `app.js` (screens, speech, parent area), `style.css`.
 
 Lessons are data. To add one, append an entry to `LESSONS` in `lessons.js` with an `id`,
 `module`, `rods`, `count`, `mastery`, and a `gen(rng)` function that returns its items.

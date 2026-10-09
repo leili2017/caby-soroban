@@ -1,4 +1,4 @@
-// Capy Soroban: screens, speech, and the parent panel. Logic lives in soroban.js, lessons.js, runner.js.
+// Soroban Friends: screens, speech, and the parent panel. Logic lives in soroban.js, lessons.js, runner.js, speech.js, themes.js.
 (function () {
   'use strict';
   const { LESSONS, MODULES, ORDER, byId, mulberry32 } = Lessons;
@@ -40,26 +40,14 @@
   }
   let streak = 0;
 
-  // ---------- capybara ----------
-  const capy = (mood = '') => `
-    <svg class="capy ${mood}" viewBox="0 0 200 160" role="img" aria-label="Capy the capybara">
-      <ellipse cx="100" cy="124" rx="80" ry="33" fill="#a9743f"/>
-      <ellipse cx="52" cy="152" rx="15" ry="7" fill="#8f5f33"/><ellipse cx="148" cy="152" rx="15" ry="7" fill="#8f5f33"/>
-      <rect x="52" y="30" width="96" height="86" rx="34" fill="#b9814a"/>
-      <ellipse cx="57" cy="40" rx="8" ry="5.5" transform="rotate(-25 57 40)" fill="#9a6836"/><ellipse cx="143" cy="40" rx="8" ry="5.5" transform="rotate(25 143 40)" fill="#9a6836"/>
-      <ellipse cx="57" cy="41" rx="4" ry="2.6" transform="rotate(-25 57 41)" fill="#d9a07a"/><ellipse cx="143" cy="41" rx="4" ry="2.6" transform="rotate(25 143 41)" fill="#d9a07a"/>
-      <rect x="58" y="72" width="84" height="46" rx="23" fill="#cf9d68"/>
-      <rect x="82" y="68" width="36" height="22" rx="11" fill="#5b3a22"/>
-      <path d="M91 75 q-3 5 0 8 M109 75 q3 5 0 8" stroke="#241509" stroke-width="3" fill="none" stroke-linecap="round"/>
-      <path d="M100 90 V96" stroke="#7a5233" stroke-width="3" stroke-linecap="round"/>
-      <circle cx="74" cy="84" r="1.6" fill="#8a5d36"/><circle cx="68" cy="88" r="1.6" fill="#8a5d36"/><circle cx="126" cy="84" r="1.6" fill="#8a5d36"/><circle cx="132" cy="88" r="1.6" fill="#8a5d36"/>
-      <circle cx="73" cy="56" r="6" fill="#2b1a0e"/><circle cx="127" cy="56" r="6" fill="#2b1a0e"/>
-      <circle cx="75" cy="54" r="2" fill="#fff"/><circle cx="129" cy="54" r="2" fill="#fff"/>
-      <ellipse class="blush" cx="68" cy="92" rx="8" ry="5" fill="#f08c7a" opacity=".7"/>
-      <ellipse class="blush" cx="132" cy="92" rx="8" ry="5" fill="#f08c7a" opacity=".7"/>
-      <path class="m-happy" d="M90 99 Q100 108 110 99" stroke="#4a2e18" stroke-width="4" fill="none" stroke-linecap="round"/>
-      <path class="m-oops" d="M91 105 Q100 99 109 105" stroke="#4a2e18" stroke-width="4" fill="none" stroke-linecap="round"/>
-    </svg>`;
+  // ---------- friends and themes ----------
+  const themeFor = moduleId => Themes.get(Themes.forModule(moduleId));
+  function applyTheme(t) {
+    const st = document.documentElement.style;
+    Object.entries(Themes.vars(t)).forEach(([k, v]) => st.setProperty(k, v));
+  }
+  let theme = themeFor(1);
+  const capy = (mood = '') => Themes.svg(theme.id, mood);
   const setMood = (mood) => { const c = app.querySelector('.coach .capy'); if (c) c.setAttribute('class', `capy ${mood}`); };
 
   // ---------- home ----------
@@ -67,11 +55,13 @@
   function home() {
     if ('speechSynthesis' in window) speechSynthesis.cancel();
     const nextId = ORDER.find(id => !(progress.lessons[id] && progress.lessons[id].passed));
+    theme = themeFor(nextId ? byId[nextId].module : MODULES[MODULES.length - 1].id);
+    applyTheme(theme);
     app.innerHTML = `
       <section class="home">
-        <div class="hero">${capy('')}<div><h1>Capy Soroban</h1><p>Pick a game!</p></div></div>
+        <div class="hero">${capy('')}<div><h1>Soroban Friends</h1><p>${theme.name} says: pick a game!</p></div></div>
         ${MODULES.map(m => `
-          <div class="module"><h2><span class="num">${m.id}</span>${m.title}</h2>
+          <div class="module" style="${Themes.css(themeFor(m.id))}"><h2><span class="num">${m.id}</span>${m.title}</h2>
           <div class="path">${LESSONS.filter(l => l.module === m.id).map(l => {
             const ok = Runner.unlocked(progress, ORDER, l.id);
             const st = (progress.lessons[l.id] || {}).stars || 0;
@@ -89,6 +79,8 @@
 
   function play(id) {
     const lesson = byId[id];
+    theme = themeFor(lesson.module);
+    applyTheme(theme);
     session = Runner.start(lesson, mulberry32((Date.now() ^ (Math.random() * 1e9)) >>> 0));
     streak = 0;
     app.innerHTML = `

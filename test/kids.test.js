@@ -1,10 +1,12 @@
 // Logic tests for the kids course (engine, lessons, runner). Run: node test/kids.test.js
 const assert = require('assert');
+const fs = require('fs');
 const path = require('path');
 const S = require(path.join(__dirname, '..', 'kids', 'soroban.js'));
 const L = require(path.join(__dirname, '..', 'kids', 'lessons.js'));
 const R = require(path.join(__dirname, '..', 'kids', 'runner.js'));
 const T = require(path.join(__dirname, '..', 'kids', 'speech.js'));
+const Th = require(path.join(__dirname, '..', 'kids', 'themes.js'));
 
 let passed = 0;
 function test(name, fn) {
@@ -339,6 +341,62 @@ test('saved progress keeps a chosen voice and defaults to none', () => {
   assert.strictEqual(pr.voice, '');
   pr.voice = 'Ava (Enhanced)'; R.save(st, pr);
   assert.strictEqual(R.load(st).voice, 'Ava (Enhanced)');
+});
+
+// ---------- themes ----------
+const contrast = (a, b) => {
+  const lum = h => { const c = [1, 3, 5].map(i => parseInt(h.slice(i, i + 2), 16) / 255).map(v => (v <= 0.03928 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4))); return 0.2126 * c[0] + 0.7152 * c[1] + 0.0722 * c[2]; };
+  const x = lum(a), y = lum(b); return (Math.max(x, y) + 0.05) / (Math.min(x, y) + 0.05);
+};
+test('all seven friends exist, with unique ids, names and palettes', () => {
+  assert.deepStrictEqual(Th.ORDER, ['capybara', 'hedgehog', 'axolotl', 'fennec', 'hamster', 'rabbit', 'dragon']);
+  const ts = Th.ORDER.map(id => Th.THEMES[id]);
+  assert.strictEqual(new Set(ts.map(t => t.name)).size, 7);
+  assert.strictEqual(new Set(ts.map(t => t.palette.bg)).size, 7);
+  assert.strictEqual(new Set(ts.map(t => t.palette.brand)).size, 7);
+  ts.forEach(t => assert.strictEqual(Th.THEMES[t.id], t));
+});
+test('every friend draws well-formed SVG with both mouths and a blush', () => {
+  for (const id of Th.ORDER) {
+    const svg = Th.svg(id, 'happy');
+    const stack = [];
+    for (const m of svg.matchAll(/<(\/?)([a-zA-Z]+)([^>]*?)(\/?)>/g)) {
+      const [, close, tag, , self] = m;
+      if (self) continue;
+      if (close) assert.strictEqual(stack.pop(), tag, `${id}: mismatched </${tag}>`);
+      else stack.push(tag);
+    }
+    assert.deepStrictEqual(stack, [], `${id}: unclosed tags`);
+    for (const need of ['m-happy', 'm-oops', 'blush', 'viewBox="0 0 200 160"', 'role="img"']) assert.ok(svg.includes(need), `${id} missing ${need}`);
+    assert.ok(!/NaN|undefined|\[object/.test(svg), `${id} has a bad value`);
+    assert.ok(svg.includes(Th.get(id).name), `${id} aria-label should name the friend`);
+  }
+});
+test('palettes keep text readable: dark on background, white on the big buttons', () => {
+  for (const id of Th.ORDER) {
+    const p = Th.get(id).palette;
+    assert.ok(contrast('#3b2a1a', p.bg) >= 7, `${id} text on background`);
+    assert.ok(contrast('#ffffff', p.brand) >= 3, `${id} white on brand (large text)`);
+    assert.ok(contrast('#ffffff', p.brandDark) >= 4.5, `${id} white on dark brand`);
+  }
+});
+test('each module gets the next friend, and the list wraps', () => {
+  assert.strictEqual(Th.forModule(1), 'capybara');
+  assert.strictEqual(Th.forModule(2), 'hedgehog');
+  assert.strictEqual(Th.forModule(7), 'dragon');
+  assert.strictEqual(Th.forModule(8), 'capybara');
+  assert.strictEqual(Th.forModule(9), 'hedgehog');
+  for (const m of L.MODULES) assert.ok(Th.THEMES[Th.forModule(m.id)], `module ${m.id}`);
+});
+test('an unknown theme falls back to the capybara, and bad module numbers do not crash', () => {
+  assert.strictEqual(Th.get('nope').id, 'capybara');
+  for (const n of [0, -3, 1.5, NaN, undefined]) assert.ok(Th.THEMES[Th.forModule(n)], String(n));
+});
+test('theme css sets every colour variable the stylesheet uses', () => {
+  const css = Th.css(Th.get('rabbit'));
+  for (const v of ['--bg', '--brand', '--brand-dark', '--edge', '--dot']) assert.ok(css.includes(v + ':'), v);
+  const sheet = fs.readFileSync(path.join(__dirname, '..', 'kids', 'style.css'), 'utf8');
+  for (const v of ['--brand', '--brand-dark', '--edge', '--dot']) assert.ok(sheet.includes(`var(${v})`), `${v} unused`);
 });
 
 console.log(`${passed} tests passed${process.exitCode ? ', with failures' : ''}`);
