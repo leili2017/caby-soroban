@@ -85,6 +85,7 @@ test('every drag result is a valid digit', () => {
 });
 
 // ---------- lessons ----------
+const STARTS_EMPTY = new Set(['1.1', '1.2', '1.3', '2.1', '2.2']);
 test('curriculum ids are unique, ordered, and reference real modules', () => {
   assert.strictEqual(new Set(L.ORDER).size, L.ORDER.length);
   for (const l of L.LESSONS) assert.ok(L.MODULES.some(m => m.id === l.module), l.id);
@@ -108,7 +109,7 @@ test('every item has a spoken prompt and valid bead digits (200 seeds)', () => {
         arr.forEach(d => assert.ok(Number.isInteger(d) && d >= 0 && d <= 9, `${l.id} digit ${d}`));
       }
       if (it.kind === 'set') assert.strictEqual(S.toValue(it.target), it.answer, `${l.id} target != answer`);
-      if (it.kind === 'set' && l.id !== '2.4' && !(l.id === '1.2' && it.answer === 0)) assert.strictEqual(S.toValue(it.start), 0, `${l.id} should start empty`);
+      if (it.kind === 'set' && STARTS_EMPTY.has(l.id) && !(l.id === '1.2' && it.answer === 0)) assert.strictEqual(S.toValue(it.start), 0, `${l.id} should start empty`);
       if (it.kind === 'set') assert.notStrictEqual(it.start.join(''), it.target.join(''), `${l.id} starts already solved`);
     }
   }
@@ -418,6 +419,145 @@ test('the reset button no longer relies on confirm()', () => {
   const src = fs.readFileSync(path.join(__dirname, '..', 'kids', 'app.js'), 'utf8');
   assert.ok(!/\bconfirm\(/.test(src), 'confirm() can be blocked and silently do nothing');
   assert.ok(src.includes('Runner.wipe'));
+});
+
+// ---------- module 3: add and take away without complements ----------
+const M3 = ['3.1', '3.2', '3.3', '3.4', '3.5'];
+const dir = (a, b) => { const x = S.beadsFor(a), y = S.beadsFor(b); return { h: Number(y.heaven) - Number(x.heaven), e: y.earth - x.earth }; };
+test('module 3 exists with five lessons, in order, after module 2', () => {
+  assert.deepStrictEqual(L.LESSONS.filter(l => l.module === 3).map(l => l.id), M3);
+  assert.ok(L.MODULES.some(m => m.id === 3));
+  assert.deepStrictEqual(L.ORDER.slice(8, 13), M3);
+});
+test('module 3: every move is direct, with no carry or borrow, and stays on one rod (300 seeds)', () => {
+  for (const id of M3) for (let sd = 0; sd < 300; sd++) {
+    const items = L.byId[id].gen(rng(sd));
+    assert.strictEqual(items.length, L.byId[id].count, `${id} count`);
+    items.forEach(it => {
+      const a = it.show, b = it.answer, d = b - a;
+      assert.ok(a >= 0 && a <= 9 && b >= 0 && b <= 9 && d !== 0, `${id} ${a}->${b}`);
+      assert.strictEqual(S.toValue(it.start), a, `${id} beads should start on ${a}`);
+      assert.strictEqual(S.toValue(it.target), b);
+      assert.strictEqual(it.badge, (d > 0 ? '+' : '\u2212') + Math.abs(d));
+      const m = dir(a, b);
+      if (d > 0) assert.ok(m.h >= 0 && m.e >= 0, `${id} ${a}+${d} would need a complement`);
+      else assert.ok(m.h <= 0 && m.e <= 0, `${id} ${a}${d} would need a complement`);
+    });
+  }
+});
+test('module 3: no repeated problem within a lesson, and the spoken line names both numbers', () => {
+  for (const id of M3) for (let sd = 0; sd < 100; sd++) {
+    const items = L.byId[id].gen(rng(sd));
+    assert.strictEqual(new Set(items.map(i => i.show + ':' + i.badge)).size, items.length, `${id} repeats`);
+    items.forEach(i => { assert.ok(i.say.includes(String(i.show))); assert.ok(/plus|minus/.test(i.say)); });
+  }
+});
+test('3.1 and 3.2 use bottom beads only; 3.3 and 3.4 each include top-bead moves', () => {
+  for (let sd = 0; sd < 100; sd++) {
+    for (const id of ['3.1', '3.2']) L.byId[id].gen(rng(sd)).forEach(i => assert.ok(i.show <= 4 && i.answer <= 4, `${id}`));
+    assert.ok(L.byId['3.1'].gen(rng(sd)).every(i => i.answer > i.show));
+    assert.ok(L.byId['3.2'].gen(rng(sd)).every(i => i.answer < i.show));
+    assert.ok(L.byId['3.3'].gen(rng(sd)).some(i => i.answer - i.show === 5), '3.3 needs a +5');
+    assert.ok(L.byId['3.3'].gen(rng(sd)).every(i => i.answer > i.show));
+    assert.ok(L.byId['3.4'].gen(rng(sd)).some(i => i.show - i.answer === 5), '3.4 needs a -5');
+    assert.ok(L.byId['3.4'].gen(rng(sd)).every(i => i.answer < i.show));
+  }
+});
+test('3.5 mixes the signs evenly', () => {
+  for (let sd = 0; sd < 100; sd++) {
+    const items = L.byId['3.5'].gen(rng(sd));
+    assert.strictEqual(items.filter(i => i.answer > i.show).length, 6);
+    assert.strictEqual(items.filter(i => i.answer < i.show).length, 6);
+  }
+});
+test('module 3 gets the axolotl friend', () => { assert.strictEqual(Th.forModule(3), 'axolotl'); });
+
+// ---------- modules 4 and 5: friends of five and friends of ten ----------
+const M4 = ['4.1', '4.2', '4.3'], M5 = ['5.1', '5.2', '5.3'];
+const direct = (a, b) => { const m = dir(a, b); return b > a ? m.h >= 0 && m.e >= 0 : m.h <= 0 && m.e <= 0; };
+const opposite = (a, b) => { const m = dir(a, b); return (m.h > 0 && m.e < 0) || (m.h < 0 && m.e > 0); };
+test('modules 4 and 5 exist, in order, after module 3', () => {
+  assert.deepStrictEqual(L.ORDER.slice(13), [...M4, ...M5]);
+  assert.deepStrictEqual(L.MODULES.map(m => m.id), [1, 2, 3, 4, 5]);
+  assert.deepStrictEqual(M5.map(id => L.byId[id].rods), [2, 2, 2]);
+});
+test('4.1 and 4.2: every move crosses five, so the top and bottom beads move in opposite directions', () => {
+  for (let sd = 0; sd < 300; sd++) for (const id of ['4.1', '4.2']) {
+    const items = L.byId[id].gen(rng(sd));
+    assert.strictEqual(items.length, 10);
+    items.forEach(i => {
+      const a = i.show, b = i.answer, d = b - a;
+      assert.ok(a >= 0 && a <= 9 && b >= 0 && b <= 9, `${id} ${a}->${b}`);
+      assert.ok(Math.abs(d) >= 1 && Math.abs(d) <= 4, `${id} step ${d}`);
+      assert.ok(opposite(a, b), `${id} ${a}->${b} should need a friend of five`);
+      assert.strictEqual(id === '4.1' ? d > 0 : d < 0, true, `${id} direction`);
+      assert.strictEqual(S.toValue(i.start), a);
+    });
+    assert.strictEqual(new Set(items.map(i => i.show + i.badge)).size, 10, `${id} repeats`);
+  }
+});
+test('4.x: the method is spoken only where the dotted hint shows, and it adds up', () => {
+  for (const id of ['4.1', '4.2']) for (let sd = 0; sd < 100; sd++) {
+    L.byId[id].gen(rng(sd)).forEach((i, k) => {
+      assert.strictEqual(Boolean(i.hint), k < 3);
+      assert.strictEqual(i.say.includes('Try it:'), k < 3, `${id} item ${k}`);
+      if (k < 3) {
+        const d = Math.abs(i.answer - i.show), friend = 5 - d;
+        assert.ok(i.say.includes(i.answer > i.show ? `add 5, then take away ${friend}` : `take away 5, then put back ${friend}`), i.say);
+      }
+    });
+  }
+});
+test('4.3 mixes friends of five with direct moves, evenly in both directions', () => {
+  for (let sd = 0; sd < 200; sd++) {
+    const items = L.byId['4.3'].gen(rng(sd));
+    assert.strictEqual(items.length, 12);
+    assert.strictEqual(items.filter(i => opposite(i.show, i.answer)).length, 8);
+    assert.strictEqual(items.filter(i => direct(i.show, i.answer)).length, 4);
+    assert.strictEqual(items.filter(i => i.answer > i.show).length, 6);
+    assert.strictEqual(new Set(items.map(i => i.show + i.badge)).size, 12);
+  }
+});
+test('5.1 and 5.2: carry or borrow exactly one ten; tens and ones rods both move directly', () => {
+  for (let sd = 0; sd < 200; sd++) for (const id of ['5.1', '5.2']) {
+    const items = L.byId[id].gen(rng(sd));
+    assert.strictEqual(items.length, 10);
+    items.forEach(i => {
+      const a = i.show, b = i.answer, up = id === '5.1';
+      assert.ok(a >= 0 && b >= 0 && a <= 99 && b <= 99, `${id} ${a}->${b}`);
+      assert.strictEqual(Math.floor(b / 10) - Math.floor(a / 10), up ? 1 : -1, `${id} ${a}->${b} must change the tens by one`);
+      assert.strictEqual(up ? b % 10 < a % 10 : b % 10 > a % 10, true, `${id} ones must wrap`);
+      assert.ok(direct(Math.floor(a / 10), Math.floor(b / 10)), `${id} tens rod ${a}->${b} needs a complement`);
+      assert.ok(direct(a % 10, b % 10), `${id} ones rod ${a}->${b} needs a complement`);
+      assert.deepStrictEqual(i.start, S.toDigits(a, 2));
+      assert.deepStrictEqual(i.target, S.toDigits(b, 2));
+    });
+    assert.strictEqual(new Set(items.map(i => i.show + i.badge)).size, 10, `${id} repeats`);
+  }
+});
+test('5.x: the hint says add or take away ten, with the right amount', () => {
+  for (const id of ['5.1', '5.2']) for (let sd = 0; sd < 100; sd++) {
+    L.byId[id].gen(rng(sd)).forEach((i, k) => {
+      assert.strictEqual(i.say.includes('Try it:'), k < 3);
+      if (k < 3) {
+        const friend = 10 - Math.abs(i.answer - i.show);
+        assert.ok(i.say.includes(i.answer > i.show ? `add 10, then take away ${friend}` : `take away 10, then put back ${friend}`), i.say);
+      }
+    });
+  }
+});
+test('5.3 mixes six carries and six borrows, tens rod always direct', () => {
+  for (let sd = 0; sd < 200; sd++) {
+    const items = L.byId['5.3'].gen(rng(sd));
+    assert.strictEqual(items.length, 12);
+    assert.strictEqual(items.filter(i => i.answer > i.show).length, 6);
+    items.forEach(i => assert.ok(direct(Math.floor(i.show / 10), Math.floor(i.answer / 10))));
+    assert.strictEqual(new Set(items.map(i => i.show + i.badge)).size, 12);
+  }
+});
+test('modules 4 and 5 get the fennec fox and the hamster', () => {
+  assert.strictEqual(Th.forModule(4), 'fennec');
+  assert.strictEqual(Th.forModule(5), 'hamster');
 });
 
 console.log(`${passed} tests passed${process.exitCode ? ', with failures' : ''}`);

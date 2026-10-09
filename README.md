@@ -11,8 +11,7 @@ Two apps live in this repo. Both are static files with no server, build step, or
 
 Each module has its own friend and colours (`themes.js`): Capy the capybara, Hedgie the hedgehog,
 Axo the axolotl, Fenny the fennec fox, Hammy the hamster, Bun the rabbit, and Draco the green dragon.
-Module 1 uses the first, module 2 the next, and so on, wrapping after the seventh. Only modules 1
-and 2 exist so far, so only Capy and Hedgie appear until more modules are added.
+Module 1 uses the first, module 2 the next, and so on, wrapping after the seventh. Five modules exist so far, so Capy, Hedgie, Axo, Fenny and Hammy appear; Bun and Draco arrive with modules 6 and 7.
 
 Files: `soroban.js` (bead logic and SVG abacus), `lessons.js` (lesson data), `runner.js`
 (session scoring and saved progress), `speech.js` (voice choice and phrases), `themes.js` (friends and colours), `app.js` (screens, speech, parent area), `style.css`.
@@ -22,6 +21,13 @@ Lessons are data. To add one, append an entry to `LESSONS` in `lessons.js` with 
 
 - **Module 1, Meet the soroban:** push to the bar, bottom beads (0 to 4), top bead (5 to 9), reading one rod.
 - **Module 2, Tens and ones:** tens, tens and ones together, reading two rods, counting up and down.
+- **Module 3, Adding and taking away:** moves the beads allow directly (bottom beads for 1 to 4, top bead for 5), single rod.
+- **Module 4, Friends of five:** moves that cross 5, where the top bead and bottom beads move in opposite directions.
+- **Module 5, Friends of ten:** carrying and borrowing across the tens and ones rods.
+
+In modules 3 to 5 the beads start on the first number and he moves them to the answer. The first three
+items of a lesson show a dotted outline of the answer and, for friends of five and ten, speak the method
+("add 5, then take away 2"). Later items give no help.
 - **Moving beads:** drag a bead up or down along its rod, like the real thing. A bead pushes the ones it touches, and settles at the nearer end when he lets go. A quick tap also works. Each problem is checked as soon as the beads match, then the board clears for the next one.
 - **Scoring:** only first-try answers count. A missed item comes back once at the end as practice.
   A lesson opens once the previous one is passed.
@@ -78,6 +84,7 @@ The logic can be checked headlessly with Node (no browser needed):
 ```sh
 node test/harness.js     # adult app: 1,500 generated problems
 node test/kids.test.js   # kids app: bead logic, lesson data, scoring, saved progress
+node scripts/build-kids.js && node test/e2e.js   # plays the built page in jsdom (needs: npm i --no-save jsdom)
 ```
 
 It loads the page script against a stubbed DOM, generates 1,500 problems across all

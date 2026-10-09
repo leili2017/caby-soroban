@@ -317,6 +317,8 @@ button:focus-visible { outline: 4px solid var(--gold); outline-offset: 2px; }
 // Item shapes (all spoken via `say`; the child never has to read):
 //   set  : { kind, rods, show, badge?, hint?, start[], target[], answer, say }  child moves the beads to `target`
 //   read : { kind, rods, target[], answer, choices[3], say }                    child picks the number shown
+//   Add/take-away items are `set` items too: `start` is the number already on the beads, `badge` shows
+//   the move (+3, -2), and the child moves the beads to `target`.
 (function (root, factory) {
   const api = factory();
   if (typeof module === 'object' && module.exports) module.exports = api;
@@ -365,6 +367,67 @@ button:focus-visible { outline: 4px solid var(--gold); outline-offset: 2px; }
     kind: 'read', rods, target: digitsOf(v, rods), answer: v, choices, say: 'What number do you see?',
   });
 
+
+  // "Start on `a`, then add or take away `d`." The beads begin at `a`.
+  const moveItem = (a, d, rods, extra = {}) => {
+    const b = a + d;
+    const item = {
+      kind: 'set', rods, show: a, badge: (d > 0 ? '+' : '\u2212') + Math.abs(d),
+      start: digitsOf(a, rods), target: digitsOf(b, rods), answer: b,
+      say: `The abacus shows ${a}. ${d > 0 ? 'Add' : 'Take away'} ${Math.abs(d)}. What is ${a} ${d > 0 ? 'plus' : 'minus'} ${Math.abs(d)}?`,
+      ...extra,
+    };
+    if (item.how && item.hint) item.say += ' ' + item.how;   // the method is spoken only where the dotted hint shows
+    return item;
+  };
+  // Every (a, d) pair whose result stays on one rod and passes `ok`.
+  const pairs = (aLo, aHi, dSign, ok) => {
+    const out = [];
+    for (let a = aLo; a <= aHi; a++) for (let m = 1; m <= 9; m++) {
+      const d = dSign * m, b = a + d;
+      if (b >= 0 && b <= 9 && ok(a, d, b)) out.push([a, d]);
+    }
+    return out;
+  };
+  // Pick n pairs, spreading across different starting numbers and amounts.
+  function spread(rng, pool, n) {
+    const out = [], used = new Set();
+    for (const [a, d] of shuffle(rng, pool)) {
+      if (out.length >= n) break;
+      const k = a + ':' + d;
+      if (!used.has(k)) { used.add(k); out.push([a, d]); }
+    }
+    return out;
+  }
+
+  // A move the beads allow directly: no complement, no carry, no borrow.
+  const isDirect = (a, d, b) => (d > 0
+    ? (b <= 4 || (a >= 5 && d <= 4) || (d === 5 && a <= 4))
+    : (a <= 4 || (b >= 5 && d >= -4) || d === -5));
+  const how5 = d => { const k = 5 - Math.abs(d); return d > 0 ? `Try it: add 5, then take away ${k}.` : `Try it: take away 5, then put back ${k}.`; };
+  const how10 = d => { const k = 10 - Math.abs(d); return d > 0 ? `Try it: add 10, then take away ${k}.` : `Try it: take away 10, then put back ${k}.`; };
+  // Friends of five: the move crosses 5, so the top bead and the bottom beads move in opposite directions.
+  const ADD5 = pairs(1, 4, +1, (a, d, b) => d <= 4 && b >= 5);
+  const SUB5 = pairs(5, 8, -1, (a, d, b) => -d <= 4 && b <= 4);
+  // Friends of ten: carry or borrow exactly one ten. The tens rod always moves one step directly.
+  // onesDirect keeps the ones rod gentle too, for the first lessons.
+  function tenPool(sign, onesDirect) {
+    const out = [];
+    for (let n = sign > 0 ? 1 : 10; n <= (sign > 0 ? 89 : 99); n++) {
+      const t = Math.floor(n / 10), a = n % 10;
+      for (let m = 1; m <= 9; m++) {
+        const b = n + sign * m;
+        if (b < 0 || b > 99) continue;
+        const bt = Math.floor(b / 10), ba = b % 10;
+        if (bt !== t + sign) continue;
+        if (!isDirect(t, sign, bt)) continue;
+        if (onesDirect && !isDirect(a, ba - a, ba)) continue;
+        out.push([n, sign * m]);
+      }
+    }
+    return out;
+  }
+
   // Wrong answers a child is likely to pick.
   function digitChoices(rng, d) {
     const near = [d + 1, d - 1, d < 5 ? d + 5 : d - 5].filter(x => x >= 0 && x <= 9);
@@ -382,6 +445,9 @@ button:focus-visible { outline: 4px solid var(--gold); outline-offset: 2px; }
   const MODULES = [
     { id: 1, title: 'Meet the soroban' },
     { id: 2, title: 'Tens and ones' },
+    { id: 3, title: 'Adding and taking away' },
+    { id: 4, title: 'Friends of five' },
+    { id: 5, title: 'Friends of ten' },
   ];
 
   const LESSONS = [
@@ -453,6 +519,86 @@ button:focus-visible { outline: 4px solid var(--gold); outline-offset: 2px; }
           ...pick(beforePlain, 3).map(n => mk(n, -1)),
         ]);
       },
+    },
+
+    // ---------- Module 3: add and take away, no complements ----------
+    // Each move stays inside what the beads allow directly: bottom beads for 1-4, the top bead for 5.
+    {
+      id: '3.1', module: 3, icon: '➕', title: 'Add with bottom beads', rods: 1, count: 10, mastery: 8,
+      intro: 'Now we add! Start with the number on the beads, then push more beads up.',
+      gen: rng => spread(rng, pairs(0, 3, +1, (a, d, b) => b <= 4), 10).map(([a, d], i) => moveItem(a, d, 1, { hint: i < 3 })),
+    },
+    {
+      id: '3.2', module: 3, icon: '➖', title: 'Take away bottom beads', rods: 1, count: 10, mastery: 8,
+      intro: 'Now we take away! Push beads back down, away from the bar.',
+      gen: rng => spread(rng, pairs(1, 4, -1, (a, d, b) => a <= 4), 10).map(([a, d], i) => moveItem(a, d, 1, { hint: i < 3 })),
+    },
+    {
+      id: '3.3', module: 3, icon: '🖐️', title: 'Add with the top bead', rods: 1, count: 10, mastery: 8,
+      intro: 'The top bead helps us add! Five plus some more.',
+      // Adding 5 uses the top bead; adding 1-4 on top of a 5 uses the bottom beads.
+      gen: rng => spread(rng, [
+        ...pairs(0, 4, +1, (a, d, b) => d === 5 && b <= 9),
+        ...pairs(5, 8, +1, (a, d, b) => d <= 4 && b <= 9),
+      ], 10).map(([a, d], i) => moveItem(a, d, 1, { hint: i < 3 })),
+    },
+    {
+      id: '3.4', module: 3, icon: '🎈', title: 'Take away with the top bead', rods: 1, count: 10, mastery: 8,
+      intro: 'The top bead helps us take away too! Lift it away from the bar.',
+      gen: rng => spread(rng, [
+        ...pairs(5, 9, -1, (a, d, b) => d === -5),
+        ...pairs(6, 9, -1, (a, d, b) => d >= -4 && b >= 5),
+      ], 10).map(([a, d], i) => moveItem(a, d, 1, { hint: i < 3 })),
+    },
+    {
+      id: '3.5', module: 3, icon: '🎯', title: 'Add and take away mix', rods: 1, count: 12, mastery: 10,
+      intro: 'Plus and minus together! Watch the sign, then move the beads.',
+      gen: rng => {
+        // Only moves a child can do directly, with both signs in equal measure.
+        const up = spread(rng, pairs(0, 9, +1, isDirect), 6);
+        const down = spread(rng, pairs(1, 9, -1, isDirect), 6);
+        return shuffle(rng, [...up, ...down]).map(([a, d]) => moveItem(a, d, 1));
+      },
+    },
+
+    // ---------- Module 4: friends of five ----------
+    // Not enough bottom beads? The top bead and a bottom bead move in opposite directions.
+    {
+      id: '4.1', module: 4, icon: '🤝', title: 'Friends of five: adding', rods: 1, count: 10, mastery: 8,
+      intro: 'Friends of five! When there are not enough bottom beads, the top bead helps.',
+      gen: rng => spread(rng, ADD5, 10).map(([a, d], i) => moveItem(a, d, 1, { hint: i < 3, how: how5(d) })),
+    },
+    {
+      id: '4.2', module: 4, icon: '🪁', title: 'Friends of five: taking away', rods: 1, count: 10, mastery: 8,
+      intro: 'Taking away needs the friends of five too. Lift the top bead, then put some bottom beads back.',
+      gen: rng => spread(rng, SUB5, 10).map(([a, d], i) => moveItem(a, d, 1, { hint: i < 3, how: how5(d) })),
+    },
+    {
+      id: '4.3', module: 4, icon: '🎲', title: 'Friends of five mix', rods: 1, count: 12, mastery: 10,
+      intro: 'A mix of everything you know so far!',
+      gen: rng => shuffle(rng, [
+        ...spread(rng, ADD5, 4), ...spread(rng, SUB5, 4),
+        ...spread(rng, pairs(0, 9, +1, isDirect), 2), ...spread(rng, pairs(1, 9, -1, isDirect), 2),
+      ]).map(([a, d]) => moveItem(a, d, 1)),
+    },
+
+    // ---------- Module 5: friends of ten (two rods) ----------
+    {
+      id: '5.1', module: 5, icon: '🔟', title: 'Friends of ten: carrying', rods: 2, count: 10, mastery: 8,
+      intro: 'Friends of ten! When the ones rod is full, we carry one bead to the tens rod.',
+      gen: rng => spread(rng, tenPool(+1, true), 10).map(([n, d], i) => moveItem(n, d, 2, { hint: i < 3, how: how10(d) })),
+    },
+    {
+      id: '5.2', module: 5, icon: '🏠', title: 'Friends of ten: borrowing', rods: 2, count: 10, mastery: 8,
+      intro: 'Taking away needs the friends of ten too. We borrow one bead from the tens rod.',
+      gen: rng => spread(rng, tenPool(-1, true), 10).map(([n, d], i) => moveItem(n, d, 2, { hint: i < 3, how: how10(d) })),
+    },
+    {
+      id: '5.3', module: 5, icon: '🌈', title: 'Carrying and borrowing', rods: 2, count: 12, mastery: 10,
+      intro: 'Carry and borrow together! Watch the sign.',
+      gen: rng => shuffle(rng, [
+        ...spread(rng, tenPool(+1, false), 6), ...spread(rng, tenPool(-1, false), 6),
+      ]).map(([n, d]) => moveItem(n, d, 2)),
     },
   ];
 
