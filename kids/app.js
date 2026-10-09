@@ -254,9 +254,22 @@
     }
     $('p-sound').addEventListener('click', () => { progress.sound = !progress.sound; persist(); openParent(); });
     $('p-unlock').addEventListener('click', () => { progress.unlockAll = !progress.unlockAll; persist(); openParent(); });
-    $('p-reset').addEventListener('click', () => {
-      if (!confirm('Erase all saved progress?')) return;
-      progress.lessons = {}; persist(); close(); home();
+    // Two taps, not a browser dialog: browsers and Home Screen apps can silently block those.
+    let armed = null;
+    $('p-reset').addEventListener('click', e => {
+      const b = e.currentTarget;
+      if (!armed) {
+        b.textContent = 'Tap again to erase everything';
+        b.classList.add('armed');
+        armed = setTimeout(() => { armed = null; b.textContent = 'Reset progress'; b.classList.remove('armed'); }, 4000);
+        return;
+      }
+      clearTimeout(armed);
+      Runner.wipe(progress);
+      persist();
+      session = null; current = null;
+      close();
+      home();
     });
     if ($('p-show')) $('p-show').addEventListener('click', () => {
       hint(current);   // outline only: the child still makes the move himself

@@ -108,6 +108,7 @@ button:focus-visible { outline: 4px solid var(--gold); outline-offset: 2px; }
 .panel .row { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 10px; }
 .pbtn { background: #f3e8cf; border-radius: 14px; padding: 12px 18px; font-size: 16px; font-weight: 700; }
 .pbtn.danger { color: var(--bad); }
+.pbtn.danger.armed { background: var(--bad); color: #fff; }
 .pbtn.go { background: var(--brand); color: #fff; }
 .voice { display: flex; align-items: center; gap: 10px; margin: 6px 0 4px; }
 .voice label { font-weight: 700; }

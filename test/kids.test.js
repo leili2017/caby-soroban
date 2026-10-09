@@ -399,4 +399,25 @@ test('theme css sets every colour variable the stylesheet uses', () => {
   for (const v of ['--brand', '--brand-dark', '--edge', '--dot']) assert.ok(sheet.includes(`var(${v})`), `${v} unused`);
 });
 
+test('wipe erases scores and unlocks but keeps sound and voice, and persists', () => {
+  const st = memory(), p = R.load(st);
+  R.record(p, '1.1', { score: 10, stars: 3, passed: true }, 1);
+  R.record(p, '1.2', { score: 9, stars: 2, passed: true }, 2);
+  p.unlockAll = true; p.sound = false; p.voice = 'Ava (Enhanced)';
+  R.save(st, p);
+  R.wipe(p); R.save(st, p);
+  const q = R.load(st);
+  assert.deepStrictEqual(q.lessons, {});
+  assert.strictEqual(q.unlockAll, false);
+  assert.strictEqual(q.sound, false);
+  assert.strictEqual(q.voice, 'Ava (Enhanced)');
+  assert.strictEqual(R.unlocked(q, L.ORDER, '1.2'), false);   // back to only lesson 1.1 open
+  assert.strictEqual(R.unlocked(q, L.ORDER, '1.1'), true);
+});
+test('the reset button no longer relies on confirm()', () => {
+  const src = fs.readFileSync(path.join(__dirname, '..', 'kids', 'app.js'), 'utf8');
+  assert.ok(!/\bconfirm\(/.test(src), 'confirm() can be blocked and silently do nothing');
+  assert.ok(src.includes('Runner.wipe'));
+});
+
 console.log(`${passed} tests passed${process.exitCode ? ', with failures' : ''}`);

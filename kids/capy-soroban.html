@@ -118,6 +118,7 @@ button:focus-visible { outline: 4px solid var(--gold); outline-offset: 2px; }
 .panel .row { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 10px; }
 .pbtn { background: #f3e8cf; border-radius: 14px; padding: 12px 18px; font-size: 16px; font-weight: 700; }
 .pbtn.danger { color: var(--bad); }
+.pbtn.danger.armed { background: var(--bad); color: #fff; }
 .pbtn.go { background: var(--brand); color: #fff; }
 .voice { display: flex; align-items: center; gap: 10px; margin: 6px 0 4px; }
 .voice label { font-weight: 700; }
@@ -527,13 +528,19 @@ button:focus-visible { outline: 4px solid var(--gold); outline-offset: 2px; }
     };
     return p;
   }
+  // Erase scores and unlocks but keep the settings a parent chose (sound, voice).
+  function wipe(p) {
+    p.lessons = {};
+    p.unlockAll = false;
+    return p;
+  }
   // A lesson opens once the one before it is passed.
   function unlocked(p, order, id) {
     const i = order.indexOf(id);
     return p.unlockAll || i <= 0 || Boolean(p.lessons[order[i - 1]] && p.lessons[order[i - 1]].passed);
   }
 
-  return { start, current, submit, result, load, save, record, unlocked, KEY };
+  return { start, current, submit, result, load, save, record, wipe, unlocked, KEY };
 });
 
 </script>
@@ -1025,9 +1032,22 @@ button:focus-visible { outline: 4px solid var(--gold); outline-offset: 2px; }
     }
     $('p-sound').addEventListener('click', () => { progress.sound = !progress.sound; persist(); openParent(); });
     $('p-unlock').addEventListener('click', () => { progress.unlockAll = !progress.unlockAll; persist(); openParent(); });
-    $('p-reset').addEventListener('click', () => {
-      if (!confirm('Erase all saved progress?')) return;
-      progress.lessons = {}; persist(); close(); home();
+    // Two taps, not a browser dialog: browsers and Home Screen apps can silently block those.
+    let armed = null;
+    $('p-reset').addEventListener('click', e => {
+      const b = e.currentTarget;
+      if (!armed) {
+        b.textContent = 'Tap again to erase everything';
+        b.classList.add('armed');
+        armed = setTimeout(() => { armed = null; b.textContent = 'Reset progress'; b.classList.remove('armed'); }, 4000);
+        return;
+      }
+      clearTimeout(armed);
+      Runner.wipe(progress);
+      persist();
+      session = null; current = null;
+      close();
+      home();
     });
     if ($('p-show')) $('p-show').addEventListener('click', () => {
       hint(current);   // outline only: the child still makes the move himself

@@ -63,11 +63,17 @@
     };
     return p;
   }
+  // Erase scores and unlocks but keep the settings a parent chose (sound, voice).
+  function wipe(p) {
+    p.lessons = {};
+    p.unlockAll = false;
+    return p;
+  }
   // A lesson opens once the one before it is passed.
   function unlocked(p, order, id) {
     const i = order.indexOf(id);
     return p.unlockAll || i <= 0 || Boolean(p.lessons[order[i - 1]] && p.lessons[order[i - 1]].passed);
   }
 
-  return { start, current, submit, result, load, save, record, unlocked, KEY };
+  return { start, current, submit, result, load, save, record, wipe, unlocked, KEY };
 });
