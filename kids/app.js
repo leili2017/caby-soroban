@@ -63,7 +63,7 @@
         ${MODULES.map(m => `
           <div class="module" style="${Themes.css(themeFor(m.id))}"><h2><span class="num">${m.id}</span>${m.title}</h2>
           <div class="path">${LESSONS.filter(l => l.module === m.id).map(l => {
-            const ok = Runner.unlocked(progress, ORDER, l.id);
+            const ok = Runner.unlocked(progress, ORDER, l.id, l.module);
             const st = (progress.lessons[l.id] || {}).stars || 0;
             return `<button class="card ${l.id === nextId ? 'next' : ''}" data-id="${l.id}" ${ok ? '' : 'disabled'} aria-label="${l.title}${ok ? '' : ', locked'}">
               <span class="icon">${ok ? l.icon : '🔒'}</span><span class="name">${l.title}</span><span class="stars">${ok ? stars(st) : ''}</span></button>`;
@@ -218,6 +218,15 @@
 
   function openParent() {
     const inLesson = session && document.querySelector('.lesson');
+    // A module is "open" when the child has earned every lesson in it, ignoring parent unlocks.
+    const earned = { ...progress, openModules: [], unlockAll: false };
+    const modRows = MODULES.map(m => {
+      const open = LESSONS.filter(l => l.module === m.id).every(l => Runner.unlocked(earned, ORDER, l.id, m.id));
+      const forced = progress.openModules.includes(m.id);
+      const control = open ? '<span class="ok">Open</span>'
+        : `<button class="pbtn ${forced ? 'go' : ''}" data-mod="${m.id}">${forced ? 'Unlocked. Tap to lock' : 'Unlock'}</button>`;
+      return `<div class="modrow"><span><b>${m.id}</b> ${m.title}</span>${control}</div>`;
+    }).join('');
     const rows = LESSONS.map(l => {
       const p = progress.lessons[l.id];
       return `<tr><td>${l.id} ${l.title}</td><td>${p ? p.plays : 0}</td><td>${p ? `${p.best}/${l.count}` : '-'}</td><td>${p && p.passed ? 'passed' : '-'}</td></tr>`;
@@ -234,7 +243,8 @@
     parentEl.innerHTML = `
       <div class="panel" role="dialog" aria-label="Parent area">
         <h2>Parent area</h2>
-        <p>Best score counts only first-try answers. A lesson opens once the one before it is passed.</p>
+        <p>Best score counts only first-try answers. A lesson opens once the one before it is passed. Unlock a module to open all of its lessons.</p>
+        <div class="mods">${modRows}</div>
         <table><tr><th>Game</th><th>Plays</th><th>Best</th><th></th></tr>${rows}</table>
         ${voiceRow}
         <div class="row">
@@ -246,8 +256,14 @@
         </div>
       </div>`;
     const $ = id => document.getElementById(id);
-    const close = () => { parentEl.hidden = true; parentEl.innerHTML = ''; };
+    // Closing from the home screen refreshes the cards, so a new unlock shows straight away.
+    const close = () => { parentEl.hidden = true; parentEl.innerHTML = ''; if (document.querySelector('.home')) home(); };
     $('p-close').addEventListener('click', close);
+    parentEl.querySelectorAll('[data-mod]').forEach(b => b.addEventListener('click', () => {
+      Runner.toggleModule(progress, Number(b.dataset.mod));
+      persist();
+      openParent();
+    }));
     if ($('p-voice')) {
       $('p-voice').addEventListener('change', e => { progress.voice = e.target.value; persist(); say(phrases.praise({ first: true })); });
       $('p-hear').addEventListener('click', () => say(phrases.praise({ first: true })));

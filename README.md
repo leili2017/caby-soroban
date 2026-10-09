@@ -33,7 +33,10 @@ items of a lesson show a dotted outline of the answer and, for friends of five a
   A lesson opens once the previous one is passed.
 - **Hint:** after two misses on one item, dotted circles show where the beads go.
 - **Parent area:** press and hold the small gear for about 1.2 seconds. Shows plays and best
-  scores, and can show the answer, skip an item, toggle sound, unlock all lessons, or reset. Reset takes two taps (the button asks "Tap again to erase everything") and keeps the sound and voice settings.
+  scores, and can show the answer, skip an item, toggle sound, pick a voice, unlock a module, unlock
+  all lessons, or reset. **Unlock** on a module opens all of its lessons; tap again to lock it. A module
+  the child has earned shows "Open". Passing the last lesson of an unlocked module opens the next one
+  as usual. Reset takes two taps (the button asks "Tap again to erase everything") and keeps the sound and voice settings.
 - **Progress** is saved in the browser (`localStorage`), per device. Speech uses the browser's
   built-in voice. The app picks the best English voice installed (Premium and Enhanced voices rank
 highest) and the parent area has a voice picker. Praise comes from pools in `speech.js` that rotate

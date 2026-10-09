@@ -560,4 +560,55 @@ test('modules 4 and 5 get the fennec fox and the hamster', () => {
   assert.strictEqual(Th.forModule(5), 'hamster');
 });
 
+// ---------- parent unlocks a module ----------
+const modOf = id => L.byId[id].module;
+const openIds = p => L.ORDER.filter(id => R.unlocked(p, L.ORDER, id, modOf(id)));
+test('unlocking a module opens all of its lessons and nothing else', () => {
+  const p = R.load(memory());
+  assert.deepStrictEqual(openIds(p), ['1.1']);
+  assert.strictEqual(R.toggleModule(p, 3), true);
+  assert.deepStrictEqual(openIds(p), ['1.1', ...M3]);
+  assert.strictEqual(R.unlocked(p, L.ORDER, '4.1', 4), false, 'next module stays shut');
+  assert.strictEqual(R.unlocked(p, L.ORDER, '1.2', 1), false, 'earlier modules stay shut');
+});
+test('toggling twice locks it again, and several modules can be open', () => {
+  const p = R.load(memory());
+  R.toggleModule(p, 2); R.toggleModule(p, 5);
+  assert.deepStrictEqual(p.openModules, [2, 5]);
+  assert.strictEqual(R.toggleModule(p, 2), false);
+  assert.deepStrictEqual(p.openModules, [5]);
+  assert.ok(!openIds(p).includes('2.1'));
+  assert.ok(['5.1', '5.2', '5.3'].every(id => openIds(p).includes(id)));
+});
+test('passing the last lesson of an unlocked module opens the next module the normal way', () => {
+  const p = R.load(memory());
+  R.toggleModule(p, 3);
+  R.record(p, '3.5', { score: 12, stars: 3, passed: true }, 1);
+  assert.strictEqual(R.unlocked(p, L.ORDER, '4.1', 4), true);
+  assert.strictEqual(R.unlocked(p, L.ORDER, '4.2', 4), false);
+});
+test('unlocked modules are saved, survive reload, and are cleared by reset', () => {
+  const st = memory(), p = R.load(st);
+  R.toggleModule(p, 4); R.save(st, p);
+  assert.deepStrictEqual(R.load(st).openModules, [4]);
+  R.wipe(p); R.save(st, p);
+  assert.deepStrictEqual(R.load(st).openModules, []);
+});
+test('old saves without openModules still load, and junk values are dropped', () => {
+  const old = memory(); old.setItem(R.KEY, JSON.stringify({ lessons: { '1.1': { passed: true } }, sound: false }));
+  assert.deepStrictEqual(R.load(old).openModules, []);
+  assert.strictEqual(R.unlocked(R.load(old), L.ORDER, '1.2', 1), true);
+  const junk = memory(); junk.setItem(R.KEY, JSON.stringify({ openModules: [2, 'x', null, 3.5, 4] }));
+  assert.deepStrictEqual(R.load(junk).openModules, [2, 4]);
+  const bad = memory(); bad.setItem(R.KEY, JSON.stringify({ openModules: 'all' }));
+  assert.deepStrictEqual(R.load(bad).openModules, []);
+});
+test('the old three-argument call still works, and Unlock all still opens everything', () => {
+  const p = R.load(memory());
+  assert.strictEqual(R.unlocked(p, L.ORDER, '1.1'), true);
+  assert.strictEqual(R.unlocked(p, L.ORDER, '1.2'), false);
+  p.unlockAll = true;
+  assert.strictEqual(openIds(p).length, L.ORDER.length);
+});
+
 console.log(`${passed} tests passed${process.exitCode ? ', with failures' : ''}`);

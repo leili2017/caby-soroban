@@ -10,6 +10,7 @@ catch (e) { console.log('e2e skipped: jsdom not installed (npm i --no-save jsdom
 const FILE = path.join(__dirname, '..', 'kids', 'capy-soroban.html');
 const L = require(path.join(__dirname, '..', 'kids', 'lessons.js'));
 const Th = require(path.join(__dirname, '..', 'kids', 'themes.js'));
+const Th_speech = require(path.join(__dirname, '..', 'kids', 'speech.js'));
 
 let failures = 0, passed = 0;
 async function test(name, fn) {
@@ -107,7 +108,8 @@ async function boot(opts = {}) {
     assert.ok(a.qa('.ghost').length > 0, 'dotted hint on item 1');
     assert.strictEqual(a.qa('.soroban .bead').length, 5);
     a.solve();
-    assert.ok(a.spoken.some(s => /^(Yes|You did it|Great job|Wonderful|Super|Nice work|Well done|That is|Perfect|Awesome|Hooray|Look at you|Fantastic|Brilliant|High five|Just right|You are so good|Exactly)/.test(s.text)), 'praise spoken');
+    const lines = [...Th_speech.pools.FIRST, ...Th_speech.pools.RETRY, ...Th_speech.pools.STREAK, ...Th_speech.pools.WITH_NUMBER.map(p => p.replace('{n}', '\\d+'))];
+    assert.ok(a.spoken.some(s => lines.some(l => new RegExp('^' + l.replace(/[.?!]/g, m => '\\' + m) + '$').test(s.text))), 'praise spoken: ' + JSON.stringify(a.spoken.map(s => s.text)));
     assert.strictEqual(a.qa('.dots i.done').length, 1);
     assert.deepStrictEqual(a.digits(), [0], 'board is fresh for the next problem');
   });
@@ -115,8 +117,9 @@ async function boot(opts = {}) {
   await test('a wrong answer is not penalised until he pauses, then Capy encourages him', async () => {
     const a = await boot();
     a.click(a.q('.card[data-id="1.2"]'));
-    const target = a.wanted(), wrong = [(target[0] + 2) % 5 || 1];
-    if (wrong[0] === target[0]) wrong[0] = (wrong[0] % 4) + 1;
+    // A wrong position that is neither the answer nor where the beads already sit, so a real move happens.
+    const target = a.wanted(), here = a.digits();
+    const wrong = [1, 2, 3, 4].filter(x => x !== target[0] && x !== here[0]).slice(0, 1);
     a.setDigits(wrong);
     a.advance(1000);
     assert.ok(!a.q('.coach .capy.oops'), 'no scolding mid-move');
@@ -130,9 +133,10 @@ async function boot(opts = {}) {
     const a = await boot();
     a.click(a.q('.card[data-id="1.2"]'));
     while (a.wanted()[0] === 0 && a.qa('.dots i').length === 10 && a.qa('.dots i.done').length < 3) a.solve();
-    const t = a.wanted()[0], wrongs = [1, 2, 3, 4].filter(x => x !== t);
-    a.setDigits([wrongs[0]]); a.advance(2300);
-    a.setDigits([wrongs[1]]); a.advance(2300);
+    const t = a.wanted()[0];
+    const pick = () => [1, 2, 3, 4].filter(x => x !== t && x !== a.digits()[0])[0];
+    a.setDigits([pick()]); a.advance(2300);
+    a.setDigits([pick()]); a.advance(2300);
     assert.ok(a.qa('.ghost').length > 0, 'hint after two misses');
     assert.ok(/dotted circles/.test(a.spoken[a.spoken.length - 1].text));
     a.setDigits(a.wanted()); a.advance(1600);
@@ -212,6 +216,41 @@ async function boot(opts = {}) {
     const before = a.spoken.length;
     a.click(a.q('.card[data-id="1.1"]')); a.solve();
     assert.strictEqual(a.spoken.length, before);
+  });
+
+  await test('parent can unlock a module: its lessons open, the next module stays shut, and it persists', async () => {
+    const a = await boot();
+    const open = () => { a.fire(a.q('#gear'), 'pointerdown'); a.advance(1300); };
+    assert.deepStrictEqual(a.qa('.card:not([disabled])').map(c => c.dataset.id), ['1.1']);
+    open();
+    const rows = a.qa('.modrow');
+    assert.strictEqual(rows.length, L.MODULES.length, 'one row per module');
+    assert.ok(rows.every(r => r.querySelector('[data-mod]')), 'every module can be unlocked at the start');
+    a.click(a.q('[data-mod="3"]'));
+    assert.ok(/Unlocked/.test(a.q('[data-mod="3"]').textContent), 'button shows the new state');
+    assert.deepStrictEqual(a.storage().openModules, [3]);
+    a.click(a.q('#p-close'));
+    assert.deepStrictEqual(a.qa('.card:not([disabled])').map(c => c.dataset.id), ['1.1', '3.1', '3.2', '3.3', '3.4', '3.5'], 'cards refresh on close');
+    a.click(a.q('.card[data-id="3.3"]'));
+    assert.ok(a.q('.lesson'), 'an unlocked lesson can be played');
+    a.click(a.q('#back'));
+    open(); a.click(a.q('[data-mod="3"]')); a.click(a.q('#p-close'));
+    assert.deepStrictEqual(a.qa('.card:not([disabled])').map(c => c.dataset.id), ['1.1'], 'locking it again shuts the lessons');
+  });
+
+  await test('a module the child has earned shows Open, and unlocks survive a reload and a reset clears them', async () => {
+    const a = await boot();
+    for (const id of ['1.1', '1.2', '1.3']) { a.playLesson(id); a.click(a.q('#r-home')); }
+    a.fire(a.q('#gear'), 'pointerdown'); a.advance(1300);
+    assert.strictEqual(a.qa('.modrow')[0].querySelector('[data-mod]'), null, 'module 1 is open by merit');
+    assert.ok(/Open/.test(a.qa('.modrow')[0].textContent));
+    a.click(a.q('[data-mod="5"]')); a.click(a.q('#p-close'));
+    const b = await boot({ storage: { 'capy.progress.v1': a.win.localStorage.getItem('capy.progress.v1') } });
+    assert.ok(['5.1', '5.2', '5.3'].every(id => !b.q(`.card[data-id="${id}"]`).disabled), 'unlock survives reload');
+    b.fire(b.q('#gear'), 'pointerdown'); b.advance(1300);
+    b.click(b.q('#p-reset')); b.click(b.q('#p-reset'));
+    assert.deepStrictEqual(b.storage().openModules, []);
+    assert.ok(b.q('.card[data-id="5.1"]').disabled);
   });
 
   console.log(`e2e: ${passed} passed${failures ? `, ${failures} FAILED` : ''}`);

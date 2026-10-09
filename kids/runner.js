@@ -39,12 +39,14 @@
 
   // ---------- progress ----------
   const KEY = 'capy.progress.v1';
-  const fresh = () => ({ lessons: {}, unlockAll: false, sound: true, voice: '' });
+  const fresh = () => ({ lessons: {}, unlockAll: false, openModules: [], sound: true, voice: '' });
 
   function load(storage) {
     try {
       const p = JSON.parse(storage.getItem(KEY));
-      return p && typeof p === 'object' ? { ...fresh(), ...p, lessons: { ...(p.lessons || {}) } } : fresh();
+      return p && typeof p === 'object'
+        ? { ...fresh(), ...p, lessons: { ...(p.lessons || {}) }, openModules: Array.isArray(p.openModules) ? p.openModules.filter(Number.isInteger) : [] }
+        : fresh();
     } catch (e) {
       return fresh();
     }
@@ -67,13 +69,22 @@
   function wipe(p) {
     p.lessons = {};
     p.unlockAll = false;
+    p.openModules = [];
     return p;
   }
   // A lesson opens once the one before it is passed.
-  function unlocked(p, order, id) {
+  // A parent can also open a whole module (`module` is the lesson's module number).
+  function unlocked(p, order, id, module) {
     const i = order.indexOf(id);
-    return p.unlockAll || i <= 0 || Boolean(p.lessons[order[i - 1]] && p.lessons[order[i - 1]].passed);
+    return p.unlockAll || (module !== undefined && p.openModules.includes(module)) || i <= 0 ||
+      Boolean(p.lessons[order[i - 1]] && p.lessons[order[i - 1]].passed);
+  }
+  // Open or close a module for the child. Returns true when it is now open.
+  function toggleModule(p, module) {
+    const at = p.openModules.indexOf(module);
+    if (at >= 0) p.openModules.splice(at, 1); else p.openModules.push(module);
+    return at < 0;
   }
 
-  return { start, current, submit, result, load, save, record, wipe, unlocked, KEY };
+  return { start, current, submit, result, load, save, record, wipe, unlocked, toggleModule, KEY };
 });

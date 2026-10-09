@@ -110,6 +110,10 @@ button:focus-visible { outline: 4px solid var(--gold); outline-offset: 2px; }
 .pbtn.danger { color: var(--bad); }
 .pbtn.danger.armed { background: var(--bad); color: #fff; }
 .pbtn.go { background: var(--brand); color: #fff; }
+.mods { margin: 0 0 14px; }
+.modrow { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 6px 0; border-bottom: 1px solid #eee2c8; font-size: 16px; }
+.modrow .ok { color: var(--brand-dark); font-weight: 700; padding: 0 6px; }
+.modrow .pbtn { padding: 8px 14px; }
 .voice { display: flex; align-items: center; gap: 10px; margin: 6px 0 4px; }
 .voice label { font-weight: 700; }
 .voice select { flex: 1; min-width: 0; font: inherit; font-size: 16px; padding: 10px; border-radius: 12px; border: 2px solid #eee2c8; background: #fff; }
