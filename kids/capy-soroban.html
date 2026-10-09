@@ -78,18 +78,16 @@ button:focus-visible { outline: 4px solid var(--gold); outline-offset: 2px; }
 .soroban .frame { fill: var(--frame); }
 .soroban .rod { stroke: var(--rod); stroke-width: 6; stroke-linecap: round; }
 .soroban .bar { fill: #5a3a1e; }
-.soroban .hit { fill: transparent; pointer-events: all; }
 .soroban .rod-label { fill: var(--ink); font-size: 30px; font-weight: 800; }
-.soroban .bead { cursor: pointer; transition: transform .18s cubic-bezier(.3,.7,.3,1); }
+.soroban .bead { cursor: grab; touch-action: none; transition: transform .18s cubic-bezier(.3,.7,.3,1); }
+.soroban .bead.drag { cursor: grabbing; transition: none; }
 .soroban .bead .shape { stroke: rgba(0,0,0,.25); stroke-width: 3; transition: fill .15s; }
 .soroban .bead .shine { fill: rgba(255,255,255,.45); }
 .soroban .part-earth .shape { fill: var(--earth-off); }
 .soroban .part-earth.on .shape { fill: var(--earth); }
 .soroban .part-heaven .shape { fill: var(--heaven-off); }
 .soroban .part-heaven.on .shape { fill: var(--heaven); }
-.soroban .ghost { fill: none; stroke: #fff; stroke-width: 5; stroke-dasharray: 10 8; opacity: .9; pointer-events: none; }
-.soroban .pulse .shape { animation: glow 1s ease-in-out infinite; }
-.soroban .pulse.bar { animation: glow 1s ease-in-out infinite; }
+.soroban .ghost { fill: rgba(255,255,255,.18); stroke: #fff; stroke-width: 6; stroke-dasharray: 12 9; pointer-events: none; }
 @keyframes glow { 50% { filter: drop-shadow(0 0 12px #ffd400) drop-shadow(0 0 6px #ffd400); } }
 
 /* ---------- capybara ---------- */
@@ -127,7 +125,7 @@ button:focus-visible { outline: 4px solid var(--gold); outline-offset: 2px; }
   .hero .capy { width: 100px; } .hero h1 { font-size: 28px; }
 }
 @media (prefers-reduced-motion: reduce) {
-  .capy.happy, .pulse .shape, .choice.pulse, .soroban .pulse.bar { animation: none; }
+  .capy.happy, .choice.pulse { animation: none; }
   .soroban .bead { transition: none; }
 }
 
@@ -160,13 +158,29 @@ button:focus-visible { outline: 4px solid var(--gold); outline-offset: 2px; }
   const toValue = digits => digits.reduce((a, d) => a * 10 + d, 0);
   const toDigits = (n, rods) => String(n).padStart(rods, '0').slice(-rods).split('').map(Number);
 
-  // ---------- SVG renderer ----------
-  const NS = 'http://www.w3.org/2000/svg';
+  // ---------- geometry (SVG units) ----------
   const G = { rodW: 120, pad: 14, labelH: 34, bar: 140, barH: 12, bw: 88, bh: 54, pitch: 58 };
   G.deckEnd = G.bar + G.barH + 5 * G.pitch;
   G.H = G.deckEnd + 10;
   const heavenY = on => (on ? G.bar - G.bh - 3 : G.bar - G.bh - G.pitch);
   const earthY = (i, on) => (on ? G.bar + G.barH + 3 + i * G.pitch : G.deckEnd - G.bh - (3 - i) * G.pitch);
+  // The two resting heights of a bead: against the bar (on) and away from it (off).
+  const bounds = (kind, i) => (kind === 'heaven'
+    ? { on: heavenY(true), off: heavenY(false) }
+    : { on: earthY(i, true), off: earthY(i, false) });
+
+  // A bead dragged to height y (top edge). It cannot leave its track, and it settles
+  // on whichever end is nearer. `digit` is the rod's value if it were released there.
+  function drag(d0, kind, i, y) {
+    const { on, off } = bounds(kind, i);
+    const cy = Math.min(Math.max(y, Math.min(on, off)), Math.max(on, off));
+    const toward = Math.abs(cy - on) < Math.abs(cy - off);
+    return { y: cy, toward, digit: move(d0, kind, i, toward) };
+  }
+
+  // ---------- SVG renderer ----------
+  const NS = 'http://www.w3.org/2000/svg';
+  const TAP_PX = 8; // movement under this many screen pixels counts as a tap
 
   function el(tag, attrs, parent) {
     const n = document.createElementNS(NS, tag);
@@ -175,7 +189,8 @@ button:focus-visible { outline: 4px solid var(--gold); outline-offset: 2px; }
     return n;
   }
 
-  // opts: { rods, labels, mode: 'play' | 'parts', onChange(digits), onPart(name) }
+  // opts: { rods, labels, onChange(digits) }. onChange fires when a finger lifts and the
+  // rods hold a different value than before it touched down.
   function create(host, opts = {}) {
     const rods = opts.rods || 1;
     const digits = Array(rods).fill(0);
@@ -194,13 +209,10 @@ button:focus-visible { outline: 4px solid var(--gold); outline-offset: 2px; }
         t.textContent = opts.labels[r];
       }
     }
-
-    const bar = el('g', { class: 'part part-bar' }, board);
-    el('rect', { x: 0, y: G.bar, width: rods * G.rodW, height: G.barH, class: 'shape bar' }, bar);
-    el('rect', { x: 0, y: G.bar - 10, width: rods * G.rodW, height: G.barH + 20, class: 'hit' }, bar);
+    el('rect', { x: 0, y: G.bar, width: rods * G.rodW, height: G.barH, class: 'bar' }, board);
 
     const bead = kind => {
-      const g = el('g', { class: `bead part part-${kind}` }, board);
+      const g = el('g', { class: `bead part-${kind}` }, board);
       el('ellipse', { rx: G.bw / 2, ry: G.bh / 2, class: 'shape' }, g);
       el('ellipse', { cx: -14, cy: -11, rx: 18, ry: 7, class: 'shine' }, g);
       return g;
@@ -214,36 +226,56 @@ button:focus-visible { outline: 4px solid var(--gold); outline-offset: 2px; }
       g.style.transform = `translate(${cx}px,${y + G.bh / 2}px)`;
       g.classList.toggle('on', on);
     };
-    const layout = () =>
-      digits.forEach((d, r) => {
-        const cx = centerX(r);
-        place(refs[r].heaven, cx, heavenY(d >= 5), d >= 5);
-        refs[r].earth.forEach((g, i) => place(g, cx, earthY(i, i < d % 5), i < d % 5));
-      });
+    // `skip` is the bead under a finger; it is positioned by the drag, not by its digit.
+    const layout = skip => digits.forEach((d, r) => {
+      const cx = centerX(r);
+      if (refs[r].heaven !== skip) place(refs[r].heaven, cx, heavenY(d >= 5), d >= 5);
+      refs[r].earth.forEach((g, i) => { if (g !== skip) place(g, cx, earthY(i, i < d % 5), i < d % 5); });
+    });
+    const scale = () => {
+      const b = svg.getBoundingClientRect(), vb = svg.viewBox.baseVal;
+      return Math.min(b.width / vb.width, b.height / vb.height) || 1;
+    };
 
-    // Tap toggles a bead; a vertical drag of 10px or more pushes it toward or away from the bar.
+    // The bead follows the finger along its track and pushes the beads it touches, like a
+    // real soroban. Lifting settles it at the nearer end. A short touch toggles it.
     function bindBead(g, r, kind, i) {
-      let y0 = null;
-      g.addEventListener('pointerdown', e => { y0 = e.clientY; e.preventDefault(); });
-      g.addEventListener('pointercancel', () => { y0 = null; });
-      g.addEventListener('pointerup', e => {
-        if (y0 === null) return;
-        const dy = e.clientY - y0;
-        y0 = null;
-        if (opts.mode === 'parts') { if (opts.onPart) opts.onPart(kind); return; }
-        if (locked) return;
-        const d = digits[r];
-        const toward = Math.abs(dy) < 10 ? !isActive(d, kind, i) : kind === 'heaven' ? dy > 0 : dy < 0;
-        digits[r] = move(d, kind, i, toward);
-        layout();
-        if (opts.onChange) opts.onChange(digits.slice());
+      let d = null;
+      g.addEventListener('pointerdown', e => {
+        if (locked || d) return;
+        e.preventDefault();
+        const d0 = digits[r];
+        const b = bounds(kind, i);
+        d = { id: e.pointerId, y0: e.clientY, d0, base: isActive(d0, kind, i) ? b.on : b.off, moved: false };
+        g.setPointerCapture(e.pointerId);
+        g.classList.add('drag');
       });
+      g.addEventListener('pointermove', e => {
+        if (!d || e.pointerId !== d.id) return;
+        const dy = e.clientY - d.y0;
+        if (Math.abs(dy) > TAP_PX) d.moved = true;
+        if (!d.moved) return;
+        const s = drag(d.d0, kind, i, d.base + dy / scale());
+        if (s.digit !== digits[r]) { digits[r] = s.digit; layout(g); }
+        place(g, centerX(r), s.y, s.toward);
+      });
+      const end = (e, cancelled) => {
+        if (!d || e.pointerId !== d.id) return;
+        const { d0, moved } = d;
+        d = null;
+        g.classList.remove('drag');
+        if (cancelled) digits[r] = d0;
+        else if (!moved) digits[r] = tap(d0, kind, i);
+        layout();
+        if (!cancelled && digits[r] !== d0 && opts.onChange) opts.onChange(digits.slice());
+      };
+      g.addEventListener('pointerup', e => end(e, false));
+      g.addEventListener('pointercancel', e => end(e, true));
     }
     refs.forEach((ref, r) => {
       bindBead(ref.heaven, r, 'heaven', 0);
       ref.earth.forEach((g, i) => bindBead(g, r, 'earth', i));
     });
-    bar.addEventListener('pointerup', () => { if (opts.mode === 'parts' && opts.onPart) opts.onPart('bar'); });
 
     host.replaceChildren(svg);
     layout();
@@ -252,14 +284,10 @@ button:focus-visible { outline: 4px solid var(--gold); outline-offset: 2px; }
       el: svg,
       get digits() { return digits.slice(); },
       get value() { return toValue(digits); },
+      // Programmatic changes never fire onChange.
       set(ds) { digits.splice(0, rods, ...ds); layout(); },
       setValue(n) { this.set(toDigits(n, rods)); },
       lock(v) { locked = v; },
-      // Make one kind of part ('bar' | 'heaven' | 'earth') pulse, or none.
-      pulse(part) {
-        svg.querySelectorAll('.part').forEach(n => n.classList.remove('pulse'));
-        if (part) svg.querySelectorAll(`.part-${part}`).forEach(n => n.classList.add('pulse'));
-      },
       // Outline where the beads should be for `target` digits, or clear with null.
       ghost(target) {
         board.querySelectorAll('.ghost').forEach(n => n.remove());
@@ -274,7 +302,7 @@ button:focus-visible { outline: 4px solid var(--gold); outline-offset: 2px; }
     };
   }
 
-  return { beadsFor, digitFrom, isActive, move, tap, toValue, toDigits, create };
+  return { beadsFor, digitFrom, isActive, move, tap, toValue, toDigits, bounds, drag, create };
 });
 
 </script>
@@ -282,9 +310,8 @@ button:focus-visible { outline: 4px solid var(--gold); outline-offset: 2px; }
 // Lesson data for Modules 1 and 2. Each lesson declares how to generate its items.
 //
 // Item shapes (all spoken via `say`; the child never has to read):
-//   set  : { kind, rods, show, badge?, start[], target[], answer, say }  child sets beads to `target`
-//   read : { kind, rods, target[], answer, choices[3], say }             child picks the number shown
-//   part : { kind, rods, part, answer, hint, say }                       child taps a named part
+//   set  : { kind, rods, show, badge?, hint?, start[], target[], answer, say }  child moves the beads to `target`
+//   read : { kind, rods, target[], answer, choices[3], say }                    child picks the number shown
 (function (root, factory) {
   const api = factory();
   if (typeof module === 'object' && module.exports) module.exports = api;
@@ -326,13 +353,12 @@ button:focus-visible { outline: 4px solid var(--gold); outline-offset: 2px; }
   // ---------- item builders ----------
   const setItem = (v, rods, extra = {}) => ({
     kind: 'set', rods, show: v, start: Array(rods).fill(0), target: digitsOf(v, rods), answer: v,
-    say: v === 0 ? 'Show zero. Push every bead away from the bar.' : `Show ${v} on your abacus. Then show it here.`,
+    say: `Show ${v} on your abacus. Then show it here.`,
     ...extra,
   });
   const readItem = (v, rods, choices) => ({
     kind: 'read', rods, target: digitsOf(v, rods), answer: v, choices, say: 'What number do you see?',
   });
-  const PART_SAY = { bar: 'Tap the bar in the middle.', heaven: 'Tap the top bead.', earth: 'Tap a bottom bead.' };
 
   // Wrong answers a child is likely to pick.
   function digitChoices(rng, d) {
@@ -355,16 +381,20 @@ button:focus-visible { outline: 4px solid var(--gold); outline-offset: 2px; }
 
   const LESSONS = [
     {
-      id: '1.1', module: 1, icon: '👆', title: 'Parts of the soroban', rods: 1, count: 10, mastery: 9,
-      intro: 'Hi! I am Capy. This is a soroban. Let us learn its parts.',
-      gen: rng => balanced(rng, ['bar', 'heaven', 'earth'], 10).map((part, i) => ({
-        kind: 'part', rods: 1, part, answer: part, hint: i < 3, start: [0], say: PART_SAY[part],
+      id: '1.1', module: 1, icon: '👆', title: 'Push to the bar', rods: 1, count: 10, mastery: 9,
+      intro: 'Hi! I am Capy. This is a soroban. Beads count when they touch the bar in the middle.',
+      gen: rng => balanced(rng, [1, 5], 10).map((v, i) => setItem(v, 1, {
+        hint: i < 3,
+        say: v === 1 ? 'Push one bottom bead up to the bar.' : 'Push the top bead down to the bar.',
       })),
     },
     {
       id: '1.2', module: 1, icon: '🌱', title: 'Bottom beads, 0 to 4', rods: 1, count: 10, mastery: 9,
       intro: 'Push beads up to the bar to count them. Let us try the bottom beads.',
-      gen: rng => balanced(rng, range(0, 4), 10).map(v => setItem(v, 1)),
+      // Zero means clearing: start with beads at the bar and push them all away.
+      gen: rng => balanced(rng, range(0, 4), 10).map(v => setItem(v, 1, v === 0
+        ? { start: [int(rng, 1, 4)], say: 'Clear the beads. Push every bead away from the bar.' }
+        : {})),
     },
     {
       id: '1.3', module: 1, icon: '🍊', title: 'The top bead is five', rods: 1, count: 10, mastery: 9,
@@ -607,9 +637,10 @@ button:focus-visible { outline: 4px solid var(--gold); outline-offset: 2px; }
     item();
   }
 
-  let itemTimer = null, introPending = '';
+  let itemTimer = null, idleTimer = null, introPending = '';
   function item() {
     clearTimeout(itemTimer);
+    clearTimeout(idleTimer);
     const it = Runner.current(session);
     if (!it) return finish();
     current = it; locked = false;
@@ -623,19 +654,12 @@ button:focus-visible { outline: 4px solid var(--gold); outline-offset: 2px; }
     bubble.innerHTML = '';
     actions.innerHTML = '';
 
-    if (it.kind === 'part') {
-      bubble.className = 'bubble sm'; bubble.textContent = it.part === 'bar' ? '▬' : it.part === 'heaven' ? '5' : '1';
-      sb = Soroban.create(board, { rods: 1, mode: 'parts', onPart: name => answer(name === it.answer) });
-      if (it.hint) sb.pulse(it.answer);
-    } else if (it.kind === 'set') {
+    if (it.kind === 'set') {
       bubble.innerHTML = `${it.show}${it.badge ? `<span class="delta">${it.badge}</span>` : ''}`;
-      sb = Soroban.create(board, { rods: it.rods, labels });
+      // The board starts fresh for every problem, so nothing carries over from the last one.
+      sb = Soroban.create(board, { rods: it.rods, labels, onChange: ds => onBeads(it, ds) });
       sb.set(it.start);
-      actions.innerHTML = '<button class="big" id="done" aria-label="Done">✓</button>';
-      document.getElementById('done').addEventListener('click', () => {
-        if (locked) return;
-        answer(sb.digits.join('') === it.target.join(''));
-      });
+      if (it.hint) sb.ghost(it.target);
     } else {
       bubble.className = 'bubble sm'; bubble.textContent = '?';
       sb = Soroban.create(board, { rods: it.rods, labels });
@@ -660,12 +684,22 @@ button:focus-visible { outline: 4px solid var(--gold); outline-offset: 2px; }
 
   function hint(it) {
     if (it.kind === 'set') sb.ghost(it.target);
-    else if (it.kind === 'part') sb.pulse(it.answer);
     else app.querySelectorAll('.choice').forEach(b => { if (Number(b.dataset.v) === it.answer) b.classList.add('pulse'); });
+  }
+
+  // Beads settle when a finger lifts. A match is right straight away. Anything else is
+  // given a moment, so a move that is still in progress is never counted as a mistake.
+  const SETTLE_MS = 2200;
+  function onBeads(it, digits) {
+    if (locked || it !== current) return;
+    clearTimeout(idleTimer);
+    if (digits.join('') === it.target.join('')) return answer(true);
+    idleTimer = setTimeout(() => { if (!locked && it === current) answer(false); }, SETTLE_MS);
   }
 
   function answer(ok) {
     if (locked) return;
+    clearTimeout(idleTimer);
     const it = current;
     const r = Runner.submit(session, ok);
     if (r.outcome === 'correct') {
@@ -742,7 +776,7 @@ button:focus-visible { outline: 4px solid var(--gold); outline-offset: 2px; }
       progress.lessons = {}; persist(); close(); home();
     });
     if ($('p-show')) $('p-show').addEventListener('click', () => {
-      if (current.kind === 'set') sb.set(current.target); else hint(current);
+      hint(current);   // outline only: the child still makes the move himself
       close();
     });
     if ($('p-skip')) $('p-skip').addEventListener('click', () => {

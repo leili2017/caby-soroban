@@ -15,8 +15,9 @@ Files: `soroban.js` (bead logic and SVG abacus), `lessons.js` (lesson data), `ru
 Lessons are data. To add one, append an entry to `LESSONS` in `lessons.js` with an `id`,
 `module`, `rods`, `count`, `mastery`, and a `gen(rng)` function that returns its items.
 
-- **Module 1, Meet the soroban:** parts, bottom beads (0 to 4), top bead (5 to 9), reading one rod.
+- **Module 1, Meet the soroban:** push to the bar, bottom beads (0 to 4), top bead (5 to 9), reading one rod.
 - **Module 2, Tens and ones:** tens, tens and ones together, reading two rods, counting up and down.
+- **Moving beads:** drag a bead up or down along its rod, like the real thing. A bead pushes the ones it touches, and settles at the nearer end when he lets go. A quick tap also works. Each problem is checked as soon as the beads match, then the board clears for the next one.
 - **Scoring:** only first-try answers count. A missed item comes back once at the end as practice.
   A lesson opens once the previous one is passed.
 - **Hint:** after two misses on one item, dotted circles show where the beads go.

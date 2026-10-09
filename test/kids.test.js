@@ -49,6 +49,38 @@ test('earth moves never change the heaven bead', () => {
   }
 });
 
+// ---------- dragging ----------
+test('a dragged bead stays on its track and settles at the nearer end', () => {
+  for (const [kind, i] of [['heaven', 0], ['earth', 0], ['earth', 3]]) {
+    const { on, off } = S.bounds(kind, i);
+    const lo = Math.min(on, off), hi = Math.max(on, off);
+    assert.strictEqual(S.drag(0, kind, i, lo - 500).y, lo);   // cannot leave the track
+    assert.strictEqual(S.drag(0, kind, i, hi + 500).y, hi);
+    assert.strictEqual(S.drag(0, kind, i, on).toward, true);
+    assert.strictEqual(S.drag(0, kind, i, off).toward, false);
+    assert.strictEqual(S.drag(0, kind, i, (on + off) / 2 + (on < off ? -1 : 1)).toward, true);
+  }
+});
+test('dragging a bead to the bar counts it, and its stack comes with it', () => {
+  const { on } = S.bounds('earth', 2);
+  assert.strictEqual(S.drag(0, 'earth', 2, on).digit, 3);   // pushing the third bead brings the two nearer the bar with it
+  assert.strictEqual(S.drag(7, 'heaven', 0, S.bounds('heaven', 0).off).digit, 2);
+  assert.strictEqual(S.drag(2, 'heaven', 0, S.bounds('heaven', 0).on).digit, 7);
+});
+test('dragging a bead away from the bar clears it and the ones beyond it', () => {
+  const { off } = S.bounds('earth', 1);
+  assert.strictEqual(S.drag(4, 'earth', 1, off).digit, 1);
+});
+test('every drag result is a valid digit', () => {
+  for (let d = 0; d <= 9; d++) for (let y = -50; y <= 500; y += 7) {
+    for (const [kind, i] of [['heaven', 0], ['earth', 0], ['earth', 1], ['earth', 2], ['earth', 3]]) {
+      const r = S.drag(d, kind, i, y);
+      assert.ok(r.digit >= 0 && r.digit <= 9 && Number.isInteger(r.digit));
+      if (kind === 'earth') assert.strictEqual(r.digit >= 5, d >= 5);   // earth beads never touch the heaven bead
+    }
+  }
+});
+
 // ---------- lessons ----------
 test('curriculum ids are unique, ordered, and reference real modules', () => {
   assert.strictEqual(new Set(L.ORDER).size, L.ORDER.length);
@@ -67,13 +99,14 @@ test('every item has a spoken prompt and valid bead digits (200 seeds)', () => {
   for (const l of L.LESSONS) for (let s = 0; s < 200; s++) {
     for (const it of l.gen(rng(s))) {
       assert.ok(it.say && it.say.length > 0, `${l.id} missing say`);
-      assert.ok(['set', 'read', 'part'].includes(it.kind), `${l.id} kind`);
+      assert.ok(['set', 'read'].includes(it.kind), `${l.id} kind`);
       for (const arr of [it.start, it.target]) if (arr) {
         assert.strictEqual(arr.length, it.rods, `${l.id} rod count`);
         arr.forEach(d => assert.ok(Number.isInteger(d) && d >= 0 && d <= 9, `${l.id} digit ${d}`));
       }
       if (it.kind === 'set') assert.strictEqual(S.toValue(it.target), it.answer, `${l.id} target != answer`);
-      if (it.kind === 'set' && l.id !== '2.4') assert.strictEqual(S.toValue(it.start), 0, `${l.id} should start empty`);
+      if (it.kind === 'set' && l.id !== '2.4' && !(l.id === '1.2' && it.answer === 0)) assert.strictEqual(S.toValue(it.start), 0, `${l.id} should start empty`);
+      if (it.kind === 'set') assert.notStrictEqual(it.start.join(''), it.target.join(''), `${l.id} starts already solved`);
     }
   }
 });
@@ -95,10 +128,21 @@ test('1.2 and 1.3 cover their whole ranges evenly', () => {
     for (let v = lo; v <= hi; v++) assert.strictEqual(counts[v], 2, `${id} value ${v}`);
   }
 });
-test('1.1 asks for all three parts and hints only early items', () => {
-  const items = L.byId['1.1'].gen(rng(1));
-  assert.deepStrictEqual([...new Set(items.map(i => i.answer))].sort(), ['bar', 'earth', 'heaven']);
-  assert.strictEqual(items.filter(i => i.hint).length, 3);
+test('1.1 alternates one bottom bead and the top bead, hinting only early items', () => {
+  for (let sd = 0; sd < 100; sd++) {
+    const items = L.byId['1.1'].gen(rng(sd));
+    assert.strictEqual(items.filter(i => i.answer === 1).length, 5);
+    assert.strictEqual(items.filter(i => i.answer === 5).length, 5);
+    assert.strictEqual(items.filter(i => i.hint).length, 3);
+    items.forEach(i => { assert.strictEqual(i.kind, 'set'); assert.deepStrictEqual(i.start, [0]); });
+  }
+});
+test('1.2 zero means clearing beads that start at the bar', () => {
+  for (let sd = 0; sd < 200; sd++) {
+    const zeros = L.byId['1.2'].gen(rng(sd)).filter(i => i.answer === 0);
+    assert.strictEqual(zeros.length, 2);
+    zeros.forEach(i => { assert.ok(i.start[0] >= 1 && i.start[0] <= 4); assert.deepStrictEqual(i.target, [0]); });
+  }
 });
 test('2.2 includes four numbers needing the top bead on both rods', () => {
   for (let s = 0; s < 100; s++) {

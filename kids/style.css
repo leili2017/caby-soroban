@@ -68,18 +68,16 @@ button:focus-visible { outline: 4px solid var(--gold); outline-offset: 2px; }
 .soroban .frame { fill: var(--frame); }
 .soroban .rod { stroke: var(--rod); stroke-width: 6; stroke-linecap: round; }
 .soroban .bar { fill: #5a3a1e; }
-.soroban .hit { fill: transparent; pointer-events: all; }
 .soroban .rod-label { fill: var(--ink); font-size: 30px; font-weight: 800; }
-.soroban .bead { cursor: pointer; transition: transform .18s cubic-bezier(.3,.7,.3,1); }
+.soroban .bead { cursor: grab; touch-action: none; transition: transform .18s cubic-bezier(.3,.7,.3,1); }
+.soroban .bead.drag { cursor: grabbing; transition: none; }
 .soroban .bead .shape { stroke: rgba(0,0,0,.25); stroke-width: 3; transition: fill .15s; }
 .soroban .bead .shine { fill: rgba(255,255,255,.45); }
 .soroban .part-earth .shape { fill: var(--earth-off); }
 .soroban .part-earth.on .shape { fill: var(--earth); }
 .soroban .part-heaven .shape { fill: var(--heaven-off); }
 .soroban .part-heaven.on .shape { fill: var(--heaven); }
-.soroban .ghost { fill: none; stroke: #fff; stroke-width: 5; stroke-dasharray: 10 8; opacity: .9; pointer-events: none; }
-.soroban .pulse .shape { animation: glow 1s ease-in-out infinite; }
-.soroban .pulse.bar { animation: glow 1s ease-in-out infinite; }
+.soroban .ghost { fill: rgba(255,255,255,.18); stroke: #fff; stroke-width: 6; stroke-dasharray: 12 9; pointer-events: none; }
 @keyframes glow { 50% { filter: drop-shadow(0 0 12px #ffd400) drop-shadow(0 0 6px #ffd400); } }
 
 /* ---------- capybara ---------- */
@@ -117,6 +115,6 @@ button:focus-visible { outline: 4px solid var(--gold); outline-offset: 2px; }
   .hero .capy { width: 100px; } .hero h1 { font-size: 28px; }
 }
 @media (prefers-reduced-motion: reduce) {
-  .capy.happy, .pulse .shape, .choice.pulse, .soroban .pulse.bar { animation: none; }
+  .capy.happy, .choice.pulse { animation: none; }
   .soroban .bead { transition: none; }
 }

@@ -101,9 +101,10 @@
     item();
   }
 
-  let itemTimer = null, introPending = '';
+  let itemTimer = null, idleTimer = null, introPending = '';
   function item() {
     clearTimeout(itemTimer);
+    clearTimeout(idleTimer);
     const it = Runner.current(session);
     if (!it) return finish();
     current = it; locked = false;
@@ -117,19 +118,12 @@
     bubble.innerHTML = '';
     actions.innerHTML = '';
 
-    if (it.kind === 'part') {
-      bubble.className = 'bubble sm'; bubble.textContent = it.part === 'bar' ? '▬' : it.part === 'heaven' ? '5' : '1';
-      sb = Soroban.create(board, { rods: 1, mode: 'parts', onPart: name => answer(name === it.answer) });
-      if (it.hint) sb.pulse(it.answer);
-    } else if (it.kind === 'set') {
+    if (it.kind === 'set') {
       bubble.innerHTML = `${it.show}${it.badge ? `<span class="delta">${it.badge}</span>` : ''}`;
-      sb = Soroban.create(board, { rods: it.rods, labels });
+      // The board starts fresh for every problem, so nothing carries over from the last one.
+      sb = Soroban.create(board, { rods: it.rods, labels, onChange: ds => onBeads(it, ds) });
       sb.set(it.start);
-      actions.innerHTML = '<button class="big" id="done" aria-label="Done">✓</button>';
-      document.getElementById('done').addEventListener('click', () => {
-        if (locked) return;
-        answer(sb.digits.join('') === it.target.join(''));
-      });
+      if (it.hint) sb.ghost(it.target);
     } else {
       bubble.className = 'bubble sm'; bubble.textContent = '?';
       sb = Soroban.create(board, { rods: it.rods, labels });
@@ -154,12 +148,22 @@
 
   function hint(it) {
     if (it.kind === 'set') sb.ghost(it.target);
-    else if (it.kind === 'part') sb.pulse(it.answer);
     else app.querySelectorAll('.choice').forEach(b => { if (Number(b.dataset.v) === it.answer) b.classList.add('pulse'); });
+  }
+
+  // Beads settle when a finger lifts. A match is right straight away. Anything else is
+  // given a moment, so a move that is still in progress is never counted as a mistake.
+  const SETTLE_MS = 2200;
+  function onBeads(it, digits) {
+    if (locked || it !== current) return;
+    clearTimeout(idleTimer);
+    if (digits.join('') === it.target.join('')) return answer(true);
+    idleTimer = setTimeout(() => { if (!locked && it === current) answer(false); }, SETTLE_MS);
   }
 
   function answer(ok) {
     if (locked) return;
+    clearTimeout(idleTimer);
     const it = current;
     const r = Runner.submit(session, ok);
     if (r.outcome === 'correct') {
@@ -236,7 +240,7 @@
       progress.lessons = {}; persist(); close(); home();
     });
     if ($('p-show')) $('p-show').addEventListener('click', () => {
-      if (current.kind === 'set') sb.set(current.target); else hint(current);
+      hint(current);   // outline only: the child still makes the move himself
       close();
     });
     if ($('p-skip')) $('p-skip').addEventListener('click', () => {

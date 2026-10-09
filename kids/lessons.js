@@ -1,9 +1,8 @@
 // Lesson data for Modules 1 and 2. Each lesson declares how to generate its items.
 //
 // Item shapes (all spoken via `say`; the child never has to read):
-//   set  : { kind, rods, show, badge?, start[], target[], answer, say }  child sets beads to `target`
-//   read : { kind, rods, target[], answer, choices[3], say }             child picks the number shown
-//   part : { kind, rods, part, answer, hint, say }                       child taps a named part
+//   set  : { kind, rods, show, badge?, hint?, start[], target[], answer, say }  child moves the beads to `target`
+//   read : { kind, rods, target[], answer, choices[3], say }                    child picks the number shown
 (function (root, factory) {
   const api = factory();
   if (typeof module === 'object' && module.exports) module.exports = api;
@@ -45,13 +44,12 @@
   // ---------- item builders ----------
   const setItem = (v, rods, extra = {}) => ({
     kind: 'set', rods, show: v, start: Array(rods).fill(0), target: digitsOf(v, rods), answer: v,
-    say: v === 0 ? 'Show zero. Push every bead away from the bar.' : `Show ${v} on your abacus. Then show it here.`,
+    say: `Show ${v} on your abacus. Then show it here.`,
     ...extra,
   });
   const readItem = (v, rods, choices) => ({
     kind: 'read', rods, target: digitsOf(v, rods), answer: v, choices, say: 'What number do you see?',
   });
-  const PART_SAY = { bar: 'Tap the bar in the middle.', heaven: 'Tap the top bead.', earth: 'Tap a bottom bead.' };
 
   // Wrong answers a child is likely to pick.
   function digitChoices(rng, d) {
@@ -74,16 +72,20 @@
 
   const LESSONS = [
     {
-      id: '1.1', module: 1, icon: '👆', title: 'Parts of the soroban', rods: 1, count: 10, mastery: 9,
-      intro: 'Hi! I am Capy. This is a soroban. Let us learn its parts.',
-      gen: rng => balanced(rng, ['bar', 'heaven', 'earth'], 10).map((part, i) => ({
-        kind: 'part', rods: 1, part, answer: part, hint: i < 3, start: [0], say: PART_SAY[part],
+      id: '1.1', module: 1, icon: '👆', title: 'Push to the bar', rods: 1, count: 10, mastery: 9,
+      intro: 'Hi! I am Capy. This is a soroban. Beads count when they touch the bar in the middle.',
+      gen: rng => balanced(rng, [1, 5], 10).map((v, i) => setItem(v, 1, {
+        hint: i < 3,
+        say: v === 1 ? 'Push one bottom bead up to the bar.' : 'Push the top bead down to the bar.',
       })),
     },
     {
       id: '1.2', module: 1, icon: '🌱', title: 'Bottom beads, 0 to 4', rods: 1, count: 10, mastery: 9,
       intro: 'Push beads up to the bar to count them. Let us try the bottom beads.',
-      gen: rng => balanced(rng, range(0, 4), 10).map(v => setItem(v, 1)),
+      // Zero means clearing: start with beads at the bar and push them all away.
+      gen: rng => balanced(rng, range(0, 4), 10).map(v => setItem(v, 1, v === 0
+        ? { start: [int(rng, 1, 4)], say: 'Clear the beads. Push every bead away from the bar.' }
+        : {})),
     },
     {
       id: '1.3', module: 1, icon: '🍊', title: 'The top bead is five', rods: 1, count: 10, mastery: 9,

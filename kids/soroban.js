@@ -21,13 +21,29 @@
   const toValue = digits => digits.reduce((a, d) => a * 10 + d, 0);
   const toDigits = (n, rods) => String(n).padStart(rods, '0').slice(-rods).split('').map(Number);
 
-  // ---------- SVG renderer ----------
-  const NS = 'http://www.w3.org/2000/svg';
+  // ---------- geometry (SVG units) ----------
   const G = { rodW: 120, pad: 14, labelH: 34, bar: 140, barH: 12, bw: 88, bh: 54, pitch: 58 };
   G.deckEnd = G.bar + G.barH + 5 * G.pitch;
   G.H = G.deckEnd + 10;
   const heavenY = on => (on ? G.bar - G.bh - 3 : G.bar - G.bh - G.pitch);
   const earthY = (i, on) => (on ? G.bar + G.barH + 3 + i * G.pitch : G.deckEnd - G.bh - (3 - i) * G.pitch);
+  // The two resting heights of a bead: against the bar (on) and away from it (off).
+  const bounds = (kind, i) => (kind === 'heaven'
+    ? { on: heavenY(true), off: heavenY(false) }
+    : { on: earthY(i, true), off: earthY(i, false) });
+
+  // A bead dragged to height y (top edge). It cannot leave its track, and it settles
+  // on whichever end is nearer. `digit` is the rod's value if it were released there.
+  function drag(d0, kind, i, y) {
+    const { on, off } = bounds(kind, i);
+    const cy = Math.min(Math.max(y, Math.min(on, off)), Math.max(on, off));
+    const toward = Math.abs(cy - on) < Math.abs(cy - off);
+    return { y: cy, toward, digit: move(d0, kind, i, toward) };
+  }
+
+  // ---------- SVG renderer ----------
+  const NS = 'http://www.w3.org/2000/svg';
+  const TAP_PX = 8; // movement under this many screen pixels counts as a tap
 
   function el(tag, attrs, parent) {
     const n = document.createElementNS(NS, tag);
@@ -36,7 +52,8 @@
     return n;
   }
 
-  // opts: { rods, labels, mode: 'play' | 'parts', onChange(digits), onPart(name) }
+  // opts: { rods, labels, onChange(digits) }. onChange fires when a finger lifts and the
+  // rods hold a different value than before it touched down.
   function create(host, opts = {}) {
     const rods = opts.rods || 1;
     const digits = Array(rods).fill(0);
@@ -55,13 +72,10 @@
         t.textContent = opts.labels[r];
       }
     }
-
-    const bar = el('g', { class: 'part part-bar' }, board);
-    el('rect', { x: 0, y: G.bar, width: rods * G.rodW, height: G.barH, class: 'shape bar' }, bar);
-    el('rect', { x: 0, y: G.bar - 10, width: rods * G.rodW, height: G.barH + 20, class: 'hit' }, bar);
+    el('rect', { x: 0, y: G.bar, width: rods * G.rodW, height: G.barH, class: 'bar' }, board);
 
     const bead = kind => {
-      const g = el('g', { class: `bead part part-${kind}` }, board);
+      const g = el('g', { class: `bead part-${kind}` }, board);
       el('ellipse', { rx: G.bw / 2, ry: G.bh / 2, class: 'shape' }, g);
       el('ellipse', { cx: -14, cy: -11, rx: 18, ry: 7, class: 'shine' }, g);
       return g;
@@ -75,36 +89,56 @@
       g.style.transform = `translate(${cx}px,${y + G.bh / 2}px)`;
       g.classList.toggle('on', on);
     };
-    const layout = () =>
-      digits.forEach((d, r) => {
-        const cx = centerX(r);
-        place(refs[r].heaven, cx, heavenY(d >= 5), d >= 5);
-        refs[r].earth.forEach((g, i) => place(g, cx, earthY(i, i < d % 5), i < d % 5));
-      });
+    // `skip` is the bead under a finger; it is positioned by the drag, not by its digit.
+    const layout = skip => digits.forEach((d, r) => {
+      const cx = centerX(r);
+      if (refs[r].heaven !== skip) place(refs[r].heaven, cx, heavenY(d >= 5), d >= 5);
+      refs[r].earth.forEach((g, i) => { if (g !== skip) place(g, cx, earthY(i, i < d % 5), i < d % 5); });
+    });
+    const scale = () => {
+      const b = svg.getBoundingClientRect(), vb = svg.viewBox.baseVal;
+      return Math.min(b.width / vb.width, b.height / vb.height) || 1;
+    };
 
-    // Tap toggles a bead; a vertical drag of 10px or more pushes it toward or away from the bar.
+    // The bead follows the finger along its track and pushes the beads it touches, like a
+    // real soroban. Lifting settles it at the nearer end. A short touch toggles it.
     function bindBead(g, r, kind, i) {
-      let y0 = null;
-      g.addEventListener('pointerdown', e => { y0 = e.clientY; e.preventDefault(); });
-      g.addEventListener('pointercancel', () => { y0 = null; });
-      g.addEventListener('pointerup', e => {
-        if (y0 === null) return;
-        const dy = e.clientY - y0;
-        y0 = null;
-        if (opts.mode === 'parts') { if (opts.onPart) opts.onPart(kind); return; }
-        if (locked) return;
-        const d = digits[r];
-        const toward = Math.abs(dy) < 10 ? !isActive(d, kind, i) : kind === 'heaven' ? dy > 0 : dy < 0;
-        digits[r] = move(d, kind, i, toward);
-        layout();
-        if (opts.onChange) opts.onChange(digits.slice());
+      let d = null;
+      g.addEventListener('pointerdown', e => {
+        if (locked || d) return;
+        e.preventDefault();
+        const d0 = digits[r];
+        const b = bounds(kind, i);
+        d = { id: e.pointerId, y0: e.clientY, d0, base: isActive(d0, kind, i) ? b.on : b.off, moved: false };
+        g.setPointerCapture(e.pointerId);
+        g.classList.add('drag');
       });
+      g.addEventListener('pointermove', e => {
+        if (!d || e.pointerId !== d.id) return;
+        const dy = e.clientY - d.y0;
+        if (Math.abs(dy) > TAP_PX) d.moved = true;
+        if (!d.moved) return;
+        const s = drag(d.d0, kind, i, d.base + dy / scale());
+        if (s.digit !== digits[r]) { digits[r] = s.digit; layout(g); }
+        place(g, centerX(r), s.y, s.toward);
+      });
+      const end = (e, cancelled) => {
+        if (!d || e.pointerId !== d.id) return;
+        const { d0, moved } = d;
+        d = null;
+        g.classList.remove('drag');
+        if (cancelled) digits[r] = d0;
+        else if (!moved) digits[r] = tap(d0, kind, i);
+        layout();
+        if (!cancelled && digits[r] !== d0 && opts.onChange) opts.onChange(digits.slice());
+      };
+      g.addEventListener('pointerup', e => end(e, false));
+      g.addEventListener('pointercancel', e => end(e, true));
     }
     refs.forEach((ref, r) => {
       bindBead(ref.heaven, r, 'heaven', 0);
       ref.earth.forEach((g, i) => bindBead(g, r, 'earth', i));
     });
-    bar.addEventListener('pointerup', () => { if (opts.mode === 'parts' && opts.onPart) opts.onPart('bar'); });
 
     host.replaceChildren(svg);
     layout();
@@ -113,14 +147,10 @@
       el: svg,
       get digits() { return digits.slice(); },
       get value() { return toValue(digits); },
+      // Programmatic changes never fire onChange.
       set(ds) { digits.splice(0, rods, ...ds); layout(); },
       setValue(n) { this.set(toDigits(n, rods)); },
       lock(v) { locked = v; },
-      // Make one kind of part ('bar' | 'heaven' | 'earth') pulse, or none.
-      pulse(part) {
-        svg.querySelectorAll('.part').forEach(n => n.classList.remove('pulse'));
-        if (part) svg.querySelectorAll(`.part-${part}`).forEach(n => n.classList.add('pulse'));
-      },
       // Outline where the beads should be for `target` digits, or clear with null.
       ghost(target) {
         board.querySelectorAll('.ghost').forEach(n => n.remove());
@@ -135,5 +165,5 @@
     };
   }
 
-  return { beadsFor, digitFrom, isActive, move, tap, toValue, toDigits, create };
+  return { beadsFor, digitFrom, isActive, move, tap, toValue, toDigits, bounds, drag, create };
 });
