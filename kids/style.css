@@ -77,6 +77,11 @@ button:focus-visible { outline: 4px solid var(--gold); outline-offset: 2px; }
 .soroban .part-earth.on .shape { fill: var(--earth); }
 .soroban .part-heaven .shape { fill: var(--heaven-off); }
 .soroban .part-heaven.on .shape { fill: var(--heaven); }
+.soroban .curtain { display: none; pointer-events: all; }
+.soroban.covered .curtain { display: inline; }
+.soroban .curtain rect { fill: var(--brand-dark); }
+.soroban .curtain text { fill: #fff; font-size: 110px; font-weight: 800; }
+.big.eyes { font-size: 60px; padding: 6px 54px; line-height: 1.2; }
 .soroban .ghost { fill: rgba(255,255,255,.18); stroke: #fff; stroke-width: 6; stroke-dasharray: 12 9; pointer-events: none; }
 @keyframes glow { 50% { filter: drop-shadow(0 0 12px #ffd400) drop-shadow(0 0 6px #ffd400); } }
 

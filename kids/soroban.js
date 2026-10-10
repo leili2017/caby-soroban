@@ -140,6 +140,11 @@
       ref.earth.forEach((g, i) => bindBead(g, r, 'earth', i));
     });
 
+    // A curtain over the whole frame hides the beads (for the "picture it in your head" lessons).
+    const curtain = el('g', { class: 'curtain' }, svg);
+    el('rect', { x: 0, y: G.labelH, width: W, height: G.H + 2 * G.pad, rx: 22 }, curtain);
+    el('text', { x: W / 2, y: G.labelH + (G.H + 2 * G.pad) / 2 + 36, 'text-anchor': 'middle' }, curtain).textContent = '?';
+
     host.replaceChildren(svg);
     layout();
 
@@ -151,6 +156,8 @@
       set(ds) { digits.splice(0, rods, ...ds); layout(); },
       setValue(n) { this.set(toDigits(n, rods)); },
       lock(v) { locked = v; },
+      cover(on) { svg.classList.toggle('covered', Boolean(on)); },
+      get covered() { return svg.classList.contains('covered'); },
       // Outline where the beads should be for `target` digits, or clear with null.
       ghost(target) {
         board.querySelectorAll('.ghost').forEach(n => n.remove());

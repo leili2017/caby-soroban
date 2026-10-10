@@ -87,6 +87,11 @@ button:focus-visible { outline: 4px solid var(--gold); outline-offset: 2px; }
 .soroban .part-earth.on .shape { fill: var(--earth); }
 .soroban .part-heaven .shape { fill: var(--heaven-off); }
 .soroban .part-heaven.on .shape { fill: var(--heaven); }
+.soroban .curtain { display: none; pointer-events: all; }
+.soroban.covered .curtain { display: inline; }
+.soroban .curtain rect { fill: var(--brand-dark); }
+.soroban .curtain text { fill: #fff; font-size: 110px; font-weight: 800; }
+.big.eyes { font-size: 60px; padding: 6px 54px; line-height: 1.2; }
 .soroban .ghost { fill: rgba(255,255,255,.18); stroke: #fff; stroke-width: 6; stroke-dasharray: 12 9; pointer-events: none; }
 @keyframes glow { 50% { filter: drop-shadow(0 0 12px #ffd400) drop-shadow(0 0 6px #ffd400); } }
 
@@ -286,6 +291,11 @@ button:focus-visible { outline: 4px solid var(--gold); outline-offset: 2px; }
       ref.earth.forEach((g, i) => bindBead(g, r, 'earth', i));
     });
 
+    // A curtain over the whole frame hides the beads (for the "picture it in your head" lessons).
+    const curtain = el('g', { class: 'curtain' }, svg);
+    el('rect', { x: 0, y: G.labelH, width: W, height: G.H + 2 * G.pad, rx: 22 }, curtain);
+    el('text', { x: W / 2, y: G.labelH + (G.H + 2 * G.pad) / 2 + 36, 'text-anchor': 'middle' }, curtain).textContent = '?';
+
     host.replaceChildren(svg);
     layout();
 
@@ -297,6 +307,8 @@ button:focus-visible { outline: 4px solid var(--gold); outline-offset: 2px; }
       set(ds) { digits.splice(0, rods, ...ds); layout(); },
       setValue(n) { this.set(toDigits(n, rods)); },
       lock(v) { locked = v; },
+      cover(on) { svg.classList.toggle('covered', Boolean(on)); },
+      get covered() { return svg.classList.contains('covered'); },
       // Outline where the beads should be for `target` digits, or clear with null.
       ghost(target) {
         board.querySelectorAll('.ghost').forEach(n => n.remove());
@@ -321,6 +333,11 @@ button:focus-visible { outline: 4px solid var(--gold); outline-offset: 2px; }
 // Item shapes (all spoken via `say`; the child never has to read):
 //   set  : { kind, rods, show, badge?, hint?, start[], target[], answer, say }  child moves the beads to `target`
 //   read : { kind, rods, target[], answer, choices[3], say }                    child picks the number shown
+//   flash  : { kind, rods, target[], answer, choices[3], showMs, say, ask }          beads show, then hide; he picks the number
+//   recall : { kind, rods, start[], target[], answer, showMs, say, ask }             beads show, then clear; he builds the number
+//   mind   : { kind, rods, show, badge, start[], target[], answer, choices[3], showMs, say, ask }
+//                                                                                    beads show, then hide; he adds or takes away in his head.
+//                                                                                    `show` is the number to remember and is never displayed.
 //   Add/take-away items are `set` items too: `start` is the number already on the beads, `badge` shows
 //   the move (+3, -2), and the child moves the beads to `target`.
 (function (root, factory) {
@@ -453,6 +470,33 @@ button:focus-visible { outline: 4px solid var(--gold); outline-offset: 2px; }
     return out;
   }
 
+  // ---- module 7: picture the beads ----
+  const flashItem = (v, rods, choices, showMs) => ({
+    kind: 'flash', rods, target: digitsOf(v, rods), answer: v, choices, showMs,
+    say: 'Tap the eyes. Look at the beads and remember the number.',
+    ask: 'What number was it?',
+  });
+  const recallItem = (v, rods, showMs) => ({
+    kind: 'recall', rods, start: Array(rods).fill(0), target: digitsOf(v, rods), answer: v, showMs,
+    say: 'Tap the eyes. Look at the beads, then build the same number.',
+    ask: 'Now build the number you saw.',
+  });
+  // "Remember `a`, then add or take away `d` in your head." The wrong choices are the mistakes a child
+  // actually makes: going the wrong way, being off by one, or forgetting to move at all.
+  function mindItem(rng, a, d, rods = 1, showMs = 3000) {
+    const b = a + d, max = rods === 2 ? 99 : 9, wrong = [];
+    const add = x => { if (x >= 0 && x <= max && x !== b && !wrong.includes(x)) wrong.push(x); };
+    add(a - d); add(b + (rng() < 0.5 ? 1 : -1)); add(a); add(b + 1); add(b - 1);
+    return {
+      kind: 'mind', rods, show: a, badge: (d > 0 ? '+' : '\u2212') + Math.abs(d),
+      start: digitsOf(a, rods), target: digitsOf(b, rods), answer: b,
+      choices: shuffle(rng, [b, ...wrong.slice(0, 2)]), showMs,
+      say: 'Tap the eyes. Remember the number on the beads.',
+      ask: `Now ${d > 0 ? 'add' : 'take away'} ${Math.abs(d)} in your head. What is the answer?`,
+    };
+  }
+  const takeAway1 = (a, d, b) => b >= 1 && isDirect(a, d, b);   // a mental answer is never an empty board
+
   // Wrong answers a child is likely to pick.
   function digitChoices(rng, d) {
     const near = [d + 1, d - 1, d < 5 ? d + 5 : d - 5].filter(x => x >= 0 && x <= 9);
@@ -474,6 +518,7 @@ button:focus-visible { outline: 4px solid var(--gold); outline-offset: 2px; }
     { id: 4, title: 'Friends of five' },
     { id: 5, title: 'Friends of ten' },
     { id: 6, title: 'Bigger numbers' },
+    { id: 7, title: 'Picture the beads' },
   ];
 
   const LESSONS = [
@@ -678,6 +723,45 @@ button:focus-visible { outline: 4px solid var(--gold); outline-offset: 2px; }
         ...spread(rng, twoRod(-1, (n, b) => wraps(n, b, -1)), 5),
       ]).map(([n, d], i) => moveItem(n, d, 2, { hint: i < 3 })),
     },
+
+    // ---------- Module 7: picture the beads (the bridge to mental abacus) ----------
+    // The beads show for a few seconds, then hide. First he remembers a number, then builds it,
+    // then adds and takes away in his head. A parent can change how long the picture stays.
+    {
+      id: '7.1', module: 7, icon: '👀', title: 'Peek and pick', rods: 1, count: 10, mastery: 8,
+      intro: 'Draco has a secret! The beads will hide, so remember the number.',
+      gen: rng => balanced(rng, range(1, 9), 10).map(v => flashItem(v, 1, digitChoices(rng, v), 3000)),
+    },
+    {
+      id: '7.2', module: 7, icon: '🧱', title: 'Peek and build', rods: 1, count: 10, mastery: 8,
+      intro: 'Look at the beads. They will hide, and then you build the same number!',
+      gen: rng => balanced(rng, range(1, 9), 10).map(v => recallItem(v, 1, 2500)),
+    },
+    {
+      id: '7.3', module: 7, icon: '🏰', title: 'Peek and build two rods', rods: 2, count: 10, mastery: 8,
+      intro: 'Two rods this time! Look at the tens and the ones, then build the number.',
+      gen: rng => {
+        const heavy = shuffle(rng, range(5, 9).flatMap(t => range(5, 9).map(o => t * 10 + o))).slice(0, 4);
+        const rest = range(11, 99).filter(v => v % 10 && !heavy.includes(v));
+        return shuffle(rng, [...heavy, ...shuffle(rng, rest).slice(0, 6)]).map(v => recallItem(v, 2, 4000));
+      },
+    },
+    {
+      id: '7.4', module: 7, icon: '🧠', title: 'Imagine plus and minus', rods: 1, count: 10, mastery: 8,
+      intro: 'Now use your imagination! See the beads in your head, then add or take away.',
+      gen: rng => shuffle(rng, [
+        ...spread(rng, pairs(1, 8, +1, isDirect), 5),
+        ...spread(rng, pairs(2, 9, -1, takeAway1), 5),
+      ]).map(([a, d]) => mindItem(rng, a, d)),
+    },
+    {
+      id: '7.5', module: 7, icon: '✨', title: 'Imagine friends of five', rods: 1, count: 10, mastery: 8,
+      intro: 'Friends of five in your imagination! See the top bead and the bottom beads move.',
+      gen: rng => shuffle(rng, [
+        ...spread(rng, ADD5, 3), ...spread(rng, SUB5, 3),
+        ...spread(rng, pairs(1, 8, +1, isDirect), 2), ...spread(rng, pairs(2, 9, -1, takeAway1), 2),
+      ]).map(([a, d]) => mindItem(rng, a, d)),
+    },
   ];
 
   const ORDER = LESSONS.map(l => l.id);
@@ -728,13 +812,16 @@ button:focus-visible { outline: 4px solid var(--gold); outline-offset: 2px; }
 
   // ---------- progress ----------
   const KEY = 'capy.progress.v1';
-  const fresh = () => ({ lessons: {}, unlockAll: false, openModules: [], sound: true, voice: '' });
+  // How long a picture stays on screen in the memory lessons. A parent can lengthen or shorten it.
+  const PEEKS = [{ scale: 1, label: 'Normal' }, { scale: 1.7, label: 'Long' }, { scale: 0.7, label: 'Short' }];
+  const fresh = () => ({ lessons: {}, unlockAll: false, openModules: [], sound: true, voice: '', peekScale: 1 });
 
   function load(storage) {
     try {
       const p = JSON.parse(storage.getItem(KEY));
       return p && typeof p === 'object'
-        ? { ...fresh(), ...p, lessons: { ...(p.lessons || {}) }, openModules: Array.isArray(p.openModules) ? p.openModules.filter(Number.isInteger) : [] }
+        ? { ...fresh(), ...p, lessons: { ...(p.lessons || {}) }, openModules: Array.isArray(p.openModules) ? p.openModules.filter(Number.isInteger) : [],
+            peekScale: PEEKS.some(x => x.scale === p.peekScale) ? p.peekScale : 1 }
         : fresh();
     } catch (e) {
       return fresh();
@@ -768,6 +855,12 @@ button:focus-visible { outline: 4px solid var(--gold); outline-offset: 2px; }
     return p.unlockAll || (module !== undefined && p.openModules.includes(module)) || i <= 0 ||
       Boolean(p.lessons[order[i - 1]] && p.lessons[order[i - 1]].passed);
   }
+  const peekLabel = p => (PEEKS.find(x => x.scale === p.peekScale) || PEEKS[0]).label;
+  function cyclePeek(p) {
+    const at = PEEKS.findIndex(x => x.scale === p.peekScale);
+    p.peekScale = PEEKS[(at + 1) % PEEKS.length].scale;
+    return p.peekScale;
+  }
   // Open or close a module for the child. Returns true when it is now open.
   function toggleModule(p, module) {
     const at = p.openModules.indexOf(module);
@@ -775,7 +868,7 @@ button:focus-visible { outline: 4px solid var(--gold); outline-offset: 2px; }
     return at < 0;
   }
 
-  return { start, current, submit, result, load, save, record, wipe, unlocked, toggleModule, KEY };
+  return { start, current, submit, result, load, save, record, wipe, unlocked, toggleModule, peekLabel, cyclePeek, PEEKS, KEY };
 });
 
 </script>
@@ -1067,6 +1160,7 @@ button:focus-visible { outline: 4px solid var(--gold); outline-offset: 2px; }
   const stars = n => '⭐'.repeat(n) + '☆'.repeat(3 - n);
   function home() {
     if ('speechSynthesis' in window) speechSynthesis.cancel();
+    clearTimeout(peekTimer); clearTimeout(idleTimer); clearTimeout(itemTimer);
     const nextId = ORDER.find(id => !(progress.lessons[id] && progress.lessons[id].passed));
     theme = themeFor(nextId ? byId[nextId].module : MODULES[MODULES.length - 1].id);
     applyTheme(theme);
@@ -1110,16 +1204,17 @@ button:focus-visible { outline: 4px solid var(--gold); outline-offset: 2px; }
       </section>
       <button class="gear" id="gear" aria-label="Parent area. Press and hold.">⚙️</button>`;
     document.getElementById('back').addEventListener('click', home);
-    document.getElementById('again').addEventListener('click', () => current && say(current.say));
+    document.getElementById('again').addEventListener('click', () => repeatText && say(repeatText));
     holdToOpen(document.getElementById('gear'), () => openParent());
     introPending = lesson.intro;
     item();
   }
 
-  let itemTimer = null, idleTimer = null, introPending = '';
+  let itemTimer = null, idleTimer = null, peekTimer = null, introPending = '', repeatText = '';
   function item() {
     clearTimeout(itemTimer);
     clearTimeout(idleTimer);
+    clearTimeout(peekTimer);
     const it = Runner.current(session);
     if (!it) return finish();
     current = it; locked = false;
@@ -1139,18 +1234,15 @@ button:focus-visible { outline: 4px solid var(--gold); outline-offset: 2px; }
       sb = Soroban.create(board, { rods: it.rods, labels, onChange: ds => onBeads(it, ds) });
       sb.set(it.start);
       if (it.hint) sb.ghost(it.target);
+    } else if (it.kind === 'flash' || it.kind === 'recall' || it.kind === 'mind') {
+      memory(it, bubble, actions, board, labels);
     } else {
       bubble.className = 'bubble sm'; bubble.textContent = '?';
       sb = Soroban.create(board, { rods: it.rods, labels });
       sb.set(it.target); sb.lock(true);
-      actions.innerHTML = it.choices.map(c => `<button class="choice" data-v="${c}">${c}</button>`).join('');
-      actions.querySelectorAll('.choice').forEach(b => b.addEventListener('click', () => {
-        if (locked) return;
-        const ok = Number(b.dataset.v) === it.answer;
-        if (ok) b.classList.add('right'); else b.classList.add('gone');
-        answer(ok);
-      }));
+      showChoices(it, actions);
     }
+    repeatText = it.say;
     say(introPending ? `${introPending} ${it.say}` : it.say);
     introPending = '';
   }
@@ -1161,8 +1253,43 @@ button:focus-visible { outline: 4px solid var(--gold); outline-offset: 2px; }
     d.innerHTML = session.queue.map((_, i) => `<i class="${i < session.pos ? 'done' : i === session.pos ? 'now' : ''}"></i>`).join('');
   }
 
+  // The answer buttons shared by the reading and memory lessons.
+  function showChoices(it, actions) {
+    actions.innerHTML = it.choices.map(c => `<button class="choice" data-v="${c}">${c}</button>`).join('');
+    actions.querySelectorAll('.choice').forEach(b => b.addEventListener('click', () => {
+      if (locked) return;
+      const ok = Number(b.dataset.v) === it.answer;
+      if (ok) b.classList.add('right'); else b.classList.add('gone');
+      answer(ok);
+    }));
+  }
+
+  // Memory lessons: the beads start hidden. He taps the eyes, the beads show for a few seconds,
+  // then hide again. How long they stay is the lesson's showMs scaled by the parent's setting.
+  const peekMs = it => Math.round(it.showMs * progress.peekScale);
+  function memory(it, bubble, actions, board, labels) {
+    bubble.className = 'bubble sm'; bubble.textContent = '?';
+    sb = Soroban.create(board, { rods: it.rods, labels, onChange: ds => onBeads(it, ds) });
+    sb.set(it.kind === 'mind' ? it.start : it.target);   // mind: the number to remember; the rest: the answer
+    sb.lock(true); sb.cover(true);
+    actions.innerHTML = '<button class="big eyes" id="peek" aria-label="Look at the beads">👀</button>';
+    document.getElementById('peek').addEventListener('click', () => {
+      if (locked || it !== current) return;
+      actions.innerHTML = '';
+      sb.cover(false);
+      peekTimer = setTimeout(() => { if (it === current && !locked) ask(it, bubble, actions); }, peekMs(it));
+    });
+  }
+  function ask(it, bubble, actions) {
+    repeatText = it.ask; say(it.ask);
+    if (it.kind === 'recall') { sb.set(it.start); sb.lock(false); return; }   // now he builds it from memory
+    sb.cover(true);
+    if (it.kind === 'mind') bubble.textContent = it.badge;                       // the move, e.g. +3
+    showChoices(it, actions);
+  }
+
   function hint(it) {
-    if (it.kind === 'set') sb.ghost(it.target);
+    if (it.kind === 'set' || it.kind === 'recall') sb.ghost(it.target);
     else app.querySelectorAll('.choice').forEach(b => { if (Number(b.dataset.v) === it.answer) b.classList.add('pulse'); });
   }
 
@@ -1184,6 +1311,7 @@ button:focus-visible { outline: 4px solid var(--gold); outline-offset: 2px; }
     const r = Runner.submit(session, ok);
     if (r.outcome === 'correct') {
       locked = true; sb.lock(true);
+      if (it.kind === 'flash' || it.kind === 'mind') { sb.set(it.target); sb.cover(false); }   // show him the beads he pictured
       streak = first ? streak + 1 : 0;
       setMood('happy'); chime(true);
       say(phrases.praise({ first, streak, n: typeof it.answer === 'number' ? it.answer : undefined }));
@@ -1263,6 +1391,7 @@ button:focus-visible { outline: 4px solid var(--gold); outline-offset: 2px; }
         <div class="row">
           ${inLesson && current ? '<button class="pbtn go" id="p-show">Show answer</button><button class="pbtn" id="p-skip">Skip this one</button>' : ''}
           <button class="pbtn" id="p-sound">Sound: ${progress.sound ? 'on' : 'off'}</button>
+          <button class="pbtn" id="p-peek">Memory time: ${Runner.peekLabel(progress)}</button>
           <button class="pbtn" id="p-unlock">Unlock all: ${progress.unlockAll ? 'on' : 'off'}</button>
           <button class="pbtn danger" id="p-reset">Reset progress</button>
           <button class="pbtn go" id="p-close">Close</button>
@@ -1281,6 +1410,7 @@ button:focus-visible { outline: 4px solid var(--gold); outline-offset: 2px; }
       $('p-voice').addEventListener('change', e => { progress.voice = e.target.value; persist(); say(phrases.praise({ first: true })); });
       $('p-hear').addEventListener('click', () => say(phrases.praise({ first: true })));
     }
+    $('p-peek').addEventListener('click', () => { Runner.cyclePeek(progress); persist(); openParent(); });
     $('p-sound').addEventListener('click', () => { progress.sound = !progress.sound; persist(); openParent(); });
     $('p-unlock').addEventListener('click', () => { progress.unlockAll = !progress.unlockAll; persist(); openParent(); });
     // Two taps, not a browser dialog: browsers and Home Screen apps can silently block those.

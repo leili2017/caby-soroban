@@ -19,6 +19,7 @@ async function test(name, fn) {
 
 // A fresh page with a fake clock, a recording speech stub, and the SVG bits jsdom lacks.
 async function boot(opts = {}) {
+  const O = opts;
   const spoken = [], errors = [], timers = new Map();
   let now = 0, seq = 0;
   const dom = await JSDOM.fromFile(FILE, {
@@ -77,10 +78,40 @@ async function boot(opts = {}) {
     const v = Number(m[1]) + (m[2] ? (m[2] === '+' ? 1 : -1) * Number(m[3]) : 0);
     return String(v).padStart(rods, '0').split('').map(Number);
   }
-  function solve() {
+  const covered = () => q('.soroban').classList.contains('covered');
+  const num = ds => Number(ds.join(''));
+  // Memory items play like a child who remembers: tap the eyes, read the beads while they are visible,
+  // wait for them to hide, then answer from what was seen. Nothing is read from hidden state.
+  function solveMemory() {
+    const peek = q('#peek');
+    assert.ok(covered(), 'beads start hidden');
+    click(peek);
+    assert.ok(!covered(), 'beads show after tapping the eyes');
+    assert.ok(!q('#peek'), 'eyes button is gone while looking');
+    const seen = digits();
+    advance(5200 * peekScale);                          // longer than any lesson's showMs at this setting
+    assert.ok(!q('#peek'), 'no second peek once the picture has gone');
     const choices = qa('.choice');
-    if (choices.length) { const v = digits().join('').replace(/^0+(?=\d)/, ''); click(choices.find(c => c.textContent === v)); }
-    else setDigits(wanted());
+    if (choices.length) {                               // flash or mind
+      const m = q('#bubble').textContent.match(/^([+\u2212])(\d+)$/);
+      const answer = m ? num(seen) + (m[1] === '+' ? 1 : -1) * Number(m[2]) : num(seen);
+      assert.ok(covered(), 'beads are hidden while he answers');
+      click(choices.find(c => c.textContent === String(answer)));
+    } else {                                            // recall: the board is empty and he builds it
+      assert.ok(!covered(), 'board is open to build on');
+      assert.deepStrictEqual(digits(), digits().map(() => 0), 'board cleared for recall');
+      setDigits(seen);
+    }
+  }
+  let peekScale = O.peekScale || 1;
+  const isMemory = () => Boolean(q('#peek'));
+  function solve() {
+    if (isMemory()) solveMemory();
+    else {
+      const choices = qa('.choice');
+      if (choices.length) { const v = digits().join('').replace(/^0+(?=\\d)/, ''); click(choices.find(c => c.textContent === v)); }
+      else setDigits(wanted());
+    }
     advance(1600);
   }
   function playLesson(id) {
@@ -251,6 +282,105 @@ async function boot(opts = {}) {
     b.click(b.q('#p-reset')); b.click(b.q('#p-reset'));
     assert.deepStrictEqual(b.storage().openModules, []);
     assert.ok(b.q('.card[data-id="5.1"]').disabled);
+  });
+
+  const unlocked7 = extra => ({ storage: { 'capy.progress.v1': JSON.stringify({ openModules: [7], ...extra }) } });
+  const isCovered = a => a.q('.soroban').classList.contains('covered');
+
+  await test('module 7: the beads start hidden, show when he taps the eyes, hide on time, then he answers', async () => {
+    const a = await boot(unlocked7());
+    a.click(a.q('.card[data-id="7.1"]'));
+    assert.ok(isCovered(a), 'hidden at the start'); assert.ok(a.q('#peek')); assert.strictEqual(a.qa('.choice').length, 0, 'no answers before looking');
+    a.click(a.q('#peek'));
+    assert.ok(!isCovered(a), 'visible while looking'); assert.strictEqual(a.qa('.choice').length, 0);
+    a.advance(2900);
+    assert.ok(!isCovered(a) && a.qa('.choice').length === 0, 'still looking just before the time is up');
+    a.advance(200);
+    assert.ok(isCovered(a), 'hidden again'); assert.strictEqual(a.qa('.choice').length, 3);
+    assert.ok(/What number was it/.test(a.spoken[a.spoken.length - 1].text), 'the question is spoken');
+  });
+
+  await test('module 7: a wrong answer keeps the beads hidden; the right one shows him the beads he pictured', async () => {
+    const a = await boot(unlocked7());
+    a.click(a.q('.card[data-id="7.1"]'));
+    a.click(a.q('#peek'));
+    const seen = a.digits()[0];
+    a.advance(3200);
+    const wrong = a.qa('.choice').find(c => c.textContent !== String(seen));
+    a.click(wrong);
+    assert.ok(isCovered(a), 'still hidden after a wrong answer');
+    assert.ok(a.q('.coach .capy.oops'));
+    a.click(a.qa('.choice').find(c => c.textContent === String(seen)));
+    assert.ok(!isCovered(a), 'beads revealed after the right answer');
+    assert.deepStrictEqual(a.digits(), [seen]);
+  });
+
+  await test('module 7: building from memory starts on an empty board and accepts the number he saw', async () => {
+    const a = await boot(unlocked7());
+    a.click(a.q('.card[data-id="7.3"]'));
+    a.click(a.q('#peek'));
+    const seen = a.digits();
+    assert.ok(seen.some(d => d > 0), 'two rods shown');
+    a.advance(4100);
+    assert.ok(!isCovered(a)); assert.deepStrictEqual(a.digits(), [0, 0], 'board cleared to build on');
+    assert.ok(/build the number/.test(a.spoken[a.spoken.length - 1].text));
+    a.setDigits(seen); a.advance(1600);
+    assert.strictEqual(a.qa('.dots i.done').length, 1);
+  });
+
+  await test('module 7: imagining plus and minus shows the move, hides the beads, and checks the arithmetic', async () => {
+    const a = await boot(unlocked7());
+    a.click(a.q('.card[data-id="7.4"]'));
+    a.click(a.q('#peek'));
+    const start = a.digits()[0];
+    a.advance(3200);
+    const move = a.q('#bubble').textContent.match(/^([+\u2212])(\d)$/);
+    assert.ok(move, 'the move is shown: ' + a.q('#bubble').textContent);
+    assert.ok(isCovered(a));
+    const right = start + (move[1] === '+' ? 1 : -1) * Number(move[2]);
+    assert.ok(a.qa('.choice').some(c => c.textContent === String(right)), 'the right answer is offered');
+    assert.ok(!a.spoken.some(s => new RegExp('The abacus shows ' + start).test(s.text)), 'the number to remember is never spoken');
+  });
+
+  await test('module 7: the parent can lengthen or shorten how long the picture stays', async () => {
+    const a = await boot(unlocked7());
+    a.fire(a.q('#gear'), 'pointerdown'); a.advance(1300);
+    assert.ok(/Normal/.test(a.q('#p-peek').textContent));
+    a.click(a.q('#p-peek')); assert.ok(/Long/.test(a.q('#p-peek').textContent)); assert.strictEqual(a.storage().peekScale, 1.7);
+    a.click(a.q('#p-close')); a.click(a.q('.card[data-id="7.1"]')); a.click(a.q('#peek'));
+    a.advance(3200); assert.ok(!isCovered(a), 'Long: still looking after the normal time');
+    a.advance(2000); assert.ok(isCovered(a), 'Long: hidden after 1.7x');
+    const b = await boot(unlocked7({ peekScale: 0.7 }));
+    b.click(b.q('.card[data-id="7.1"]')); b.click(b.q('#peek'));
+    b.advance(2200); assert.ok(isCovered(b), 'Short: hidden after 0.7x');
+  });
+
+  await test('module 7: leaving in the middle of a picture is safe and silent', async () => {
+    const a = await boot(unlocked7());
+    a.click(a.q('.card[data-id="7.1"]')); a.click(a.q('#peek'));
+    const before = a.spoken.length;
+    a.click(a.q('#back'));
+    a.advance(20000);
+    assert.deepStrictEqual(a.errors, []);
+    assert.strictEqual(a.spoken.length, before, 'no stray question spoken on the home screen');
+    assert.ok(a.q('.home'));
+  });
+
+  await test('module 7: the speaker button repeats the current question, not the first instruction', async () => {
+    const a = await boot(unlocked7());
+    a.click(a.q('.card[data-id="7.1"]')); a.click(a.q('#peek')); a.advance(3200);
+    a.click(a.q('#again'));
+    assert.ok(/What number was it/.test(a.spoken[a.spoken.length - 1].text));
+  });
+
+  await test('module 7: the curtain really covers the beads (stylesheet rule is present)', async () => {
+    const a = await boot(unlocked7());
+    const css = [...a.doc.querySelectorAll('style')].map(x => x.textContent).join('');
+    assert.ok(/\.soroban\.covered \.curtain\s*\{\s*display:\s*inline/.test(css));
+    assert.ok(/\.soroban \.curtain\s*\{\s*display:\s*none/.test(css), 'curtain is off unless covered');
+    a.click(a.q('.card[data-id="7.1"]'));
+    const svg = a.q('.soroban'), kids = [...svg.children];
+    assert.strictEqual(kids[kids.length - 1].getAttribute('class'), 'curtain', 'curtain is drawn last, so it is on top');
   });
 
   console.log(`e2e: ${passed} passed${failures ? `, ${failures} FAILED` : ''}`);

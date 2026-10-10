@@ -11,7 +11,7 @@ Two apps live in this repo. Both are static files with no server, build step, or
 
 Each module has its own friend and colours (`themes.js`): Capy the capybara, Hedgie the hedgehog,
 Axo the axolotl, Fenny the fennec fox, Hammy the hamster, Bun the rabbit, and Draco the green dragon.
-Module 1 uses the first, module 2 the next, and so on, wrapping after the seventh. Six modules exist so far, so Capy, Hedgie, Axo, Fenny, Hammy and Bun appear; Draco arrives with module 7.
+Module 1 uses the first, module 2 the next, and so on, wrapping after the seventh. Seven modules exist, one friend each.
 
 Files: `soroban.js` (bead logic and SVG abacus), `lessons.js` (lesson data), `runner.js`
 (session scoring and saved progress), `speech.js` (voice choice and phrases), `themes.js` (friends and colours), `app.js` (screens, speech, parent area), `style.css`.
@@ -26,6 +26,10 @@ Lessons are data. To add one, append an entry to `LESSONS` in `lessons.js` with 
 - **Module 5, Friends of ten:** carrying and borrowing across the tens and ones rods.
 - **Module 6, Bigger numbers (Bun the rabbit):** two-digit numbers with every technique. 6.1 moves only the ones
   rod, 6.2 only the tens rod, 6.3 both rods without carrying, 6.4 is a mix, 6.5 carries and borrows.
+- **Module 7, Picture the beads (Draco the dragon):** the first step toward mental abacus. The beads are hidden behind a
+  curtain; he taps the eyes to see them for a few seconds, then they hide. 7.1 remembers a number and picks it, 7.2 and
+  7.3 build it from memory (one rod, then two), 7.4 and 7.5 add and take away in his head (direct moves, then friends of
+  five). A wrong answer keeps the beads hidden; the right one shows him the beads he pictured.
 
 In modules 3 to 5 the beads start on the first number and he moves them to the answer. The first three
 items of a lesson show a dotted outline of the answer and, for friends of five and ten, speak the method
@@ -35,8 +39,8 @@ items of a lesson show a dotted outline of the answer and, for friends of five a
   A lesson opens once the previous one is passed.
 - **Hint:** after two misses on one item, dotted circles show where the beads go.
 - **Parent area:** press and hold the small gear for about 1.2 seconds. Shows plays and best
-  scores, and can show the answer, skip an item, toggle sound, pick a voice, unlock a module, unlock
-  all lessons, or reset. **Unlock** on a module opens all of its lessons; tap again to lock it. A module
+  scores, and can show the answer, skip an item, toggle sound, pick a voice, unlock a module, set the memory time
+  (how long a picture stays: Short, Normal, Long), unlock all lessons, or reset. **Unlock** on a module opens all of its lessons; tap again to lock it. A module
   the child has earned shows "Open". Passing the last lesson of an unlocked module opens the next one
   as usual. Reset takes two taps (the button asks "Tap again to erase everything") and keeps the sound and voice settings.
 - **Progress** is saved in the browser (`localStorage`), per device. Speech uses the browser's

@@ -54,6 +54,7 @@
   const stars = n => '⭐'.repeat(n) + '☆'.repeat(3 - n);
   function home() {
     if ('speechSynthesis' in window) speechSynthesis.cancel();
+    clearTimeout(peekTimer); clearTimeout(idleTimer); clearTimeout(itemTimer);
     const nextId = ORDER.find(id => !(progress.lessons[id] && progress.lessons[id].passed));
     theme = themeFor(nextId ? byId[nextId].module : MODULES[MODULES.length - 1].id);
     applyTheme(theme);
@@ -97,16 +98,17 @@
       </section>
       <button class="gear" id="gear" aria-label="Parent area. Press and hold.">⚙️</button>`;
     document.getElementById('back').addEventListener('click', home);
-    document.getElementById('again').addEventListener('click', () => current && say(current.say));
+    document.getElementById('again').addEventListener('click', () => repeatText && say(repeatText));
     holdToOpen(document.getElementById('gear'), () => openParent());
     introPending = lesson.intro;
     item();
   }
 
-  let itemTimer = null, idleTimer = null, introPending = '';
+  let itemTimer = null, idleTimer = null, peekTimer = null, introPending = '', repeatText = '';
   function item() {
     clearTimeout(itemTimer);
     clearTimeout(idleTimer);
+    clearTimeout(peekTimer);
     const it = Runner.current(session);
     if (!it) return finish();
     current = it; locked = false;
@@ -126,18 +128,15 @@
       sb = Soroban.create(board, { rods: it.rods, labels, onChange: ds => onBeads(it, ds) });
       sb.set(it.start);
       if (it.hint) sb.ghost(it.target);
+    } else if (it.kind === 'flash' || it.kind === 'recall' || it.kind === 'mind') {
+      memory(it, bubble, actions, board, labels);
     } else {
       bubble.className = 'bubble sm'; bubble.textContent = '?';
       sb = Soroban.create(board, { rods: it.rods, labels });
       sb.set(it.target); sb.lock(true);
-      actions.innerHTML = it.choices.map(c => `<button class="choice" data-v="${c}">${c}</button>`).join('');
-      actions.querySelectorAll('.choice').forEach(b => b.addEventListener('click', () => {
-        if (locked) return;
-        const ok = Number(b.dataset.v) === it.answer;
-        if (ok) b.classList.add('right'); else b.classList.add('gone');
-        answer(ok);
-      }));
+      showChoices(it, actions);
     }
+    repeatText = it.say;
     say(introPending ? `${introPending} ${it.say}` : it.say);
     introPending = '';
   }
@@ -148,8 +147,43 @@
     d.innerHTML = session.queue.map((_, i) => `<i class="${i < session.pos ? 'done' : i === session.pos ? 'now' : ''}"></i>`).join('');
   }
 
+  // The answer buttons shared by the reading and memory lessons.
+  function showChoices(it, actions) {
+    actions.innerHTML = it.choices.map(c => `<button class="choice" data-v="${c}">${c}</button>`).join('');
+    actions.querySelectorAll('.choice').forEach(b => b.addEventListener('click', () => {
+      if (locked) return;
+      const ok = Number(b.dataset.v) === it.answer;
+      if (ok) b.classList.add('right'); else b.classList.add('gone');
+      answer(ok);
+    }));
+  }
+
+  // Memory lessons: the beads start hidden. He taps the eyes, the beads show for a few seconds,
+  // then hide again. How long they stay is the lesson's showMs scaled by the parent's setting.
+  const peekMs = it => Math.round(it.showMs * progress.peekScale);
+  function memory(it, bubble, actions, board, labels) {
+    bubble.className = 'bubble sm'; bubble.textContent = '?';
+    sb = Soroban.create(board, { rods: it.rods, labels, onChange: ds => onBeads(it, ds) });
+    sb.set(it.kind === 'mind' ? it.start : it.target);   // mind: the number to remember; the rest: the answer
+    sb.lock(true); sb.cover(true);
+    actions.innerHTML = '<button class="big eyes" id="peek" aria-label="Look at the beads">👀</button>';
+    document.getElementById('peek').addEventListener('click', () => {
+      if (locked || it !== current) return;
+      actions.innerHTML = '';
+      sb.cover(false);
+      peekTimer = setTimeout(() => { if (it === current && !locked) ask(it, bubble, actions); }, peekMs(it));
+    });
+  }
+  function ask(it, bubble, actions) {
+    repeatText = it.ask; say(it.ask);
+    if (it.kind === 'recall') { sb.set(it.start); sb.lock(false); return; }   // now he builds it from memory
+    sb.cover(true);
+    if (it.kind === 'mind') bubble.textContent = it.badge;                       // the move, e.g. +3
+    showChoices(it, actions);
+  }
+
   function hint(it) {
-    if (it.kind === 'set') sb.ghost(it.target);
+    if (it.kind === 'set' || it.kind === 'recall') sb.ghost(it.target);
     else app.querySelectorAll('.choice').forEach(b => { if (Number(b.dataset.v) === it.answer) b.classList.add('pulse'); });
   }
 
@@ -171,6 +205,7 @@
     const r = Runner.submit(session, ok);
     if (r.outcome === 'correct') {
       locked = true; sb.lock(true);
+      if (it.kind === 'flash' || it.kind === 'mind') { sb.set(it.target); sb.cover(false); }   // show him the beads he pictured
       streak = first ? streak + 1 : 0;
       setMood('happy'); chime(true);
       say(phrases.praise({ first, streak, n: typeof it.answer === 'number' ? it.answer : undefined }));
@@ -250,6 +285,7 @@
         <div class="row">
           ${inLesson && current ? '<button class="pbtn go" id="p-show">Show answer</button><button class="pbtn" id="p-skip">Skip this one</button>' : ''}
           <button class="pbtn" id="p-sound">Sound: ${progress.sound ? 'on' : 'off'}</button>
+          <button class="pbtn" id="p-peek">Memory time: ${Runner.peekLabel(progress)}</button>
           <button class="pbtn" id="p-unlock">Unlock all: ${progress.unlockAll ? 'on' : 'off'}</button>
           <button class="pbtn danger" id="p-reset">Reset progress</button>
           <button class="pbtn go" id="p-close">Close</button>
@@ -268,6 +304,7 @@
       $('p-voice').addEventListener('change', e => { progress.voice = e.target.value; persist(); say(phrases.praise({ first: true })); });
       $('p-hear').addEventListener('click', () => say(phrases.praise({ first: true })));
     }
+    $('p-peek').addEventListener('click', () => { Runner.cyclePeek(progress); persist(); openParent(); });
     $('p-sound').addEventListener('click', () => { progress.sound = !progress.sound; persist(); openParent(); });
     $('p-unlock').addEventListener('click', () => { progress.unlockAll = !progress.unlockAll; persist(); openParent(); });
     // Two taps, not a browser dialog: browsers and Home Screen apps can silently block those.

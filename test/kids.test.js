@@ -103,12 +103,12 @@ test('every item has a spoken prompt and valid bead digits (200 seeds)', () => {
   for (const l of L.LESSONS) for (let s = 0; s < 200; s++) {
     for (const it of l.gen(rng(s))) {
       assert.ok(it.say && it.say.length > 0, `${l.id} missing say`);
-      assert.ok(['set', 'read'].includes(it.kind), `${l.id} kind`);
+      assert.ok(['set', 'read', 'flash', 'recall', 'mind'].includes(it.kind), `${l.id} kind`);
       for (const arr of [it.start, it.target]) if (arr) {
         assert.strictEqual(arr.length, it.rods, `${l.id} rod count`);
         arr.forEach(d => assert.ok(Number.isInteger(d) && d >= 0 && d <= 9, `${l.id} digit ${d}`));
       }
-      if (it.kind === 'set') assert.strictEqual(S.toValue(it.target), it.answer, `${l.id} target != answer`);
+      if (it.target) assert.strictEqual(S.toValue(it.target), it.answer, `${l.id} target != answer`);
       if (it.kind === 'set' && STARTS_EMPTY.has(l.id) && !(l.id === '1.2' && it.answer === 0)) assert.strictEqual(S.toValue(it.start), 0, `${l.id} should start empty`);
       if (it.kind === 'set') assert.notStrictEqual(it.start.join(''), it.target.join(''), `${l.id} starts already solved`);
     }
@@ -478,7 +478,7 @@ const direct = (a, b) => { const m = dir(a, b); return b > a ? m.h >= 0 && m.e >
 const opposite = (a, b) => { const m = dir(a, b); return (m.h > 0 && m.e < 0) || (m.h < 0 && m.e > 0); };
 test('modules 4 and 5 exist, in order, after module 3', () => {
   assert.deepStrictEqual(L.ORDER.slice(13, 19), [...M4, ...M5]);
-  assert.deepStrictEqual(L.MODULES.map(m => m.id), [1, 2, 3, 4, 5, 6]);
+  assert.deepStrictEqual(L.MODULES.map(m => m.id), [1, 2, 3, 4, 5, 6, 7]);
   assert.deepStrictEqual(M5.map(id => L.byId[id].rods), [2, 2, 2]);
 });
 test('4.1 and 4.2: every move crosses five, so the top and bottom beads move in opposite directions', () => {
@@ -619,7 +619,7 @@ const kind = (x, y) => (x === y ? 'same' : opposite(x, y) ? 'five' : direct(x, y
 const carries = (a, b) => (b > a ? b % 10 < a % 10 : b % 10 > a % 10);
 const eachM6 = (id, fn, seeds = 300) => { for (let sd = 0; sd < seeds; sd++) L.byId[id].gen(rng(sd)).forEach((i, k, all) => fn(i, k, all, sd)); };
 test('module 6 exists after module 5 with five two-rod lessons', () => {
-  assert.deepStrictEqual(L.ORDER.slice(19), M6);
+  assert.deepStrictEqual(L.ORDER.slice(19, 24), M6);
   assert.ok(L.MODULES.some(m => m.id === 6 && m.title === 'Bigger numbers'));
   M6.forEach(id => { assert.strictEqual(L.byId[id].rods, 2); assert.strictEqual(L.byId[id].module, 6); assert.ok(L.byId[id].mastery <= L.byId[id].count); });
   assert.strictEqual(Th.forModule(6), 'rabbit');
@@ -723,6 +723,86 @@ test('module 6: every rod move across all lessons is one the beads can actually 
   for (const id of M6) eachM6(id, i => {
     for (const r of [0, 1]) { const m = rodMove(i.show, i.answer, r); assert.ok(['same', 'direct', 'five'].includes(kind(m.x, m.y)) || carries(i.show, i.answer), `${id} ${i.show}->${i.answer} rod ${r}`); }
   }, 100);
+});
+
+// ---------- module 7: picture the beads ----------
+const M7 = ['7.1', '7.2', '7.3', '7.4', '7.5'];
+const each7 = (id, fn, seeds = 300) => { for (let sd = 0; sd < seeds; sd++) L.byId[id].gen(rng(sd)).forEach((i, k, all) => fn(i, k, all, sd)); };
+test('module 7 exists after module 6 with five lessons, and gets Draco the dragon', () => {
+  assert.deepStrictEqual(L.ORDER.slice(24), M7);
+  assert.ok(L.MODULES.some(m => m.id === 7 && m.title === 'Picture the beads'));
+  M7.forEach(id => { assert.strictEqual(L.byId[id].module, 7); assert.ok(L.byId[id].mastery <= L.byId[id].count); });
+  assert.strictEqual(Th.forModule(7), 'dragon');
+});
+test('7.1 flash: three unique choices with the answer once, all valid digits, every digit practised', () => {
+  each7('7.1', (i, k, all, sd) => {
+    assert.strictEqual(i.kind, 'flash'); assert.strictEqual(i.rods, 1);
+    assert.strictEqual(i.choices.length, 3); assert.strictEqual(new Set(i.choices).size, 3);
+    assert.strictEqual(i.choices.filter(c => c === i.answer).length, 1);
+    i.choices.forEach(c => assert.ok(c >= 0 && c <= 9));
+    assert.ok(i.answer >= 1 && i.answer <= 9); assert.ok(i.showMs >= 2000 && i.showMs <= 5000);
+    assert.ok(i.ask && i.say);
+    if (k === 0) assert.deepStrictEqual([...new Set(all.map(x => x.answer))].length >= 8, true, `seed ${sd}`);
+  }, 200);
+});
+test('7.1 and 7.2 never repeat a number back to back', () => {
+  for (const id of ['7.1', '7.2']) for (let sd = 0; sd < 200; sd++) {
+    const a = L.byId[id].gen(rng(sd)).map(i => i.answer);
+    for (let k = 1; k < a.length; k++) assert.notStrictEqual(a[k], a[k - 1], `${id} seed ${sd}`);
+  }
+});
+test('7.2 and 7.3 recall: the board starts empty, the target is what was shown, two-rod numbers are never round', () => {
+  each7('7.2', i => { assert.strictEqual(i.kind, 'recall'); assert.deepStrictEqual(i.start, [0]); assert.ok(i.answer >= 1 && i.answer <= 9); });
+  each7('7.3', (i, k, all, sd) => {
+    assert.strictEqual(i.rods, 2); assert.deepStrictEqual(i.start, [0, 0]);
+    assert.ok(i.answer % 10 !== 0 && i.answer >= 11 && i.answer <= 99);
+    if (k === 0) assert.ok(all.filter(x => x.target[0] >= 5 && x.target[1] >= 5).length >= 4, `seed ${sd}`);
+  });
+  assert.ok(L.byId['7.3'].gen(rng(1))[0].showMs > L.byId['7.2'].gen(rng(1))[0].showMs, 'two rods get longer to look');
+});
+test('7.4 and 7.5 mind: the sum is right, the move needs the technique taught, and the number shown is the start', () => {
+  for (const id of M7.slice(3)) each7(id, i => {
+    assert.strictEqual(i.kind, 'mind');
+    const a = i.show, b = i.answer, d = b - a;
+    assert.ok(a >= 1 && a <= 9 && b >= 1 && b <= 9, `${id} ${a}->${b}`);
+    assert.deepStrictEqual(i.start, [a]); assert.deepStrictEqual(i.target, [b]);
+    assert.strictEqual(i.badge, (d > 0 ? '+' : '\u2212') + Math.abs(d));
+    assert.ok(i.ask.includes(d > 0 ? 'add' : 'take away') && i.ask.includes(String(Math.abs(d))));
+    assert.ok(!i.say.includes(String(a)), 'the spoken line must not give away the number to remember');
+    // The amount being added legitimately appears in the question; with it removed, the answer must not.
+    const rest = i.ask.replace(new RegExp('\\b' + Math.abs(d) + '\\b'), '');
+    assert.ok(!new RegExp('\\b' + b + '\\b').test(rest), `the question gives away the answer: "${i.ask}" (${a}${i.badge}=${b})`);
+  });
+  each7('7.4', i => assert.ok(direct(i.show, i.answer), `7.4 ${i.show}->${i.answer} should be a direct move`));
+});
+test('7.4 and 7.5 choices: three unique, the answer once, and the classic mistakes are offered', () => {
+  for (const id of M7.slice(3)) each7(id, i => {
+    assert.strictEqual(i.choices.length, 3); assert.strictEqual(new Set(i.choices).size, 3);
+    assert.strictEqual(i.choices.filter(c => c === i.answer).length, 1, `${id}`);
+    i.choices.forEach(c => assert.ok(Number.isInteger(c) && c >= 0 && c <= 9));
+  });
+  let wrongWay = 0, total = 0;
+  each7('7.4', i => { total++; if (i.choices.includes(i.show - (i.answer - i.show))) wrongWay++; }, 100);
+  assert.ok(wrongWay / total > 0.5, `going the wrong way should often be offered (${wrongWay}/${total})`);
+});
+test('7.4 mixes plus and minus evenly; 7.5 is mostly friends of five, evenly in both directions', () => {
+  for (let sd = 0; sd < 200; sd++) {
+    const a = L.byId['7.4'].gen(rng(sd)); assert.strictEqual(a.filter(i => i.answer > i.show).length, 5); assert.strictEqual(a.length, 10);
+    const b = L.byId['7.5'].gen(rng(sd)); assert.strictEqual(b.filter(i => opposite(i.show, i.answer)).length, 6); assert.strictEqual(b.filter(i => i.answer > i.show).length, 5);
+    assert.strictEqual(new Set(a.map(i => i.show + i.badge)).size, 10); assert.strictEqual(new Set(b.map(i => i.show + i.badge)).size, 10);
+  }
+});
+test('memory time: three settings, saved, cycles, bad values fall back, and a reset keeps it', () => {
+  assert.deepStrictEqual(R.PEEKS.map(p => p.scale), [1, 1.7, 0.7]);
+  const st = memory(), p = R.load(st);
+  assert.strictEqual(p.peekScale, 1); assert.strictEqual(R.peekLabel(p), 'Normal');
+  assert.strictEqual(R.cyclePeek(p), 1.7); assert.strictEqual(R.peekLabel(p), 'Long');
+  assert.strictEqual(R.cyclePeek(p), 0.7); assert.strictEqual(R.peekLabel(p), 'Short');
+  assert.strictEqual(R.cyclePeek(p), 1);
+  R.cyclePeek(p); R.save(st, p); assert.strictEqual(R.load(st).peekScale, 1.7);
+  R.wipe(p); assert.strictEqual(p.peekScale, 1.7, 'reset keeps parent settings');
+  const bad = memory(); bad.setItem(R.KEY, JSON.stringify({ peekScale: 0 })); assert.strictEqual(R.load(bad).peekScale, 1);
+  const bad2 = memory(); bad2.setItem(R.KEY, JSON.stringify({ peekScale: 'long' })); assert.strictEqual(R.load(bad2).peekScale, 1);
 });
 
 console.log(`${passed} tests passed${process.exitCode ? ', with failures' : ''}`);

@@ -3,6 +3,11 @@
 // Item shapes (all spoken via `say`; the child never has to read):
 //   set  : { kind, rods, show, badge?, hint?, start[], target[], answer, say }  child moves the beads to `target`
 //   read : { kind, rods, target[], answer, choices[3], say }                    child picks the number shown
+//   flash  : { kind, rods, target[], answer, choices[3], showMs, say, ask }          beads show, then hide; he picks the number
+//   recall : { kind, rods, start[], target[], answer, showMs, say, ask }             beads show, then clear; he builds the number
+//   mind   : { kind, rods, show, badge, start[], target[], answer, choices[3], showMs, say, ask }
+//                                                                                    beads show, then hide; he adds or takes away in his head.
+//                                                                                    `show` is the number to remember and is never displayed.
 //   Add/take-away items are `set` items too: `start` is the number already on the beads, `badge` shows
 //   the move (+3, -2), and the child moves the beads to `target`.
 (function (root, factory) {
@@ -135,6 +140,33 @@
     return out;
   }
 
+  // ---- module 7: picture the beads ----
+  const flashItem = (v, rods, choices, showMs) => ({
+    kind: 'flash', rods, target: digitsOf(v, rods), answer: v, choices, showMs,
+    say: 'Tap the eyes. Look at the beads and remember the number.',
+    ask: 'What number was it?',
+  });
+  const recallItem = (v, rods, showMs) => ({
+    kind: 'recall', rods, start: Array(rods).fill(0), target: digitsOf(v, rods), answer: v, showMs,
+    say: 'Tap the eyes. Look at the beads, then build the same number.',
+    ask: 'Now build the number you saw.',
+  });
+  // "Remember `a`, then add or take away `d` in your head." The wrong choices are the mistakes a child
+  // actually makes: going the wrong way, being off by one, or forgetting to move at all.
+  function mindItem(rng, a, d, rods = 1, showMs = 3000) {
+    const b = a + d, max = rods === 2 ? 99 : 9, wrong = [];
+    const add = x => { if (x >= 0 && x <= max && x !== b && !wrong.includes(x)) wrong.push(x); };
+    add(a - d); add(b + (rng() < 0.5 ? 1 : -1)); add(a); add(b + 1); add(b - 1);
+    return {
+      kind: 'mind', rods, show: a, badge: (d > 0 ? '+' : '\u2212') + Math.abs(d),
+      start: digitsOf(a, rods), target: digitsOf(b, rods), answer: b,
+      choices: shuffle(rng, [b, ...wrong.slice(0, 2)]), showMs,
+      say: 'Tap the eyes. Remember the number on the beads.',
+      ask: `Now ${d > 0 ? 'add' : 'take away'} ${Math.abs(d)} in your head. What is the answer?`,
+    };
+  }
+  const takeAway1 = (a, d, b) => b >= 1 && isDirect(a, d, b);   // a mental answer is never an empty board
+
   // Wrong answers a child is likely to pick.
   function digitChoices(rng, d) {
     const near = [d + 1, d - 1, d < 5 ? d + 5 : d - 5].filter(x => x >= 0 && x <= 9);
@@ -156,6 +188,7 @@
     { id: 4, title: 'Friends of five' },
     { id: 5, title: 'Friends of ten' },
     { id: 6, title: 'Bigger numbers' },
+    { id: 7, title: 'Picture the beads' },
   ];
 
   const LESSONS = [
@@ -359,6 +392,45 @@
         ...spread(rng, twoRod(+1, (n, b) => wraps(n, b, +1)), 5),
         ...spread(rng, twoRod(-1, (n, b) => wraps(n, b, -1)), 5),
       ]).map(([n, d], i) => moveItem(n, d, 2, { hint: i < 3 })),
+    },
+
+    // ---------- Module 7: picture the beads (the bridge to mental abacus) ----------
+    // The beads show for a few seconds, then hide. First he remembers a number, then builds it,
+    // then adds and takes away in his head. A parent can change how long the picture stays.
+    {
+      id: '7.1', module: 7, icon: '👀', title: 'Peek and pick', rods: 1, count: 10, mastery: 8,
+      intro: 'Draco has a secret! The beads will hide, so remember the number.',
+      gen: rng => balanced(rng, range(1, 9), 10).map(v => flashItem(v, 1, digitChoices(rng, v), 3000)),
+    },
+    {
+      id: '7.2', module: 7, icon: '🧱', title: 'Peek and build', rods: 1, count: 10, mastery: 8,
+      intro: 'Look at the beads. They will hide, and then you build the same number!',
+      gen: rng => balanced(rng, range(1, 9), 10).map(v => recallItem(v, 1, 2500)),
+    },
+    {
+      id: '7.3', module: 7, icon: '🏰', title: 'Peek and build two rods', rods: 2, count: 10, mastery: 8,
+      intro: 'Two rods this time! Look at the tens and the ones, then build the number.',
+      gen: rng => {
+        const heavy = shuffle(rng, range(5, 9).flatMap(t => range(5, 9).map(o => t * 10 + o))).slice(0, 4);
+        const rest = range(11, 99).filter(v => v % 10 && !heavy.includes(v));
+        return shuffle(rng, [...heavy, ...shuffle(rng, rest).slice(0, 6)]).map(v => recallItem(v, 2, 4000));
+      },
+    },
+    {
+      id: '7.4', module: 7, icon: '🧠', title: 'Imagine plus and minus', rods: 1, count: 10, mastery: 8,
+      intro: 'Now use your imagination! See the beads in your head, then add or take away.',
+      gen: rng => shuffle(rng, [
+        ...spread(rng, pairs(1, 8, +1, isDirect), 5),
+        ...spread(rng, pairs(2, 9, -1, takeAway1), 5),
+      ]).map(([a, d]) => mindItem(rng, a, d)),
+    },
+    {
+      id: '7.5', module: 7, icon: '✨', title: 'Imagine friends of five', rods: 1, count: 10, mastery: 8,
+      intro: 'Friends of five in your imagination! See the top bead and the bottom beads move.',
+      gen: rng => shuffle(rng, [
+        ...spread(rng, ADD5, 3), ...spread(rng, SUB5, 3),
+        ...spread(rng, pairs(1, 8, +1, isDirect), 2), ...spread(rng, pairs(2, 9, -1, takeAway1), 2),
+      ]).map(([a, d]) => mindItem(rng, a, d)),
     },
   ];
 

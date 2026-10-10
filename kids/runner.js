@@ -39,13 +39,16 @@
 
   // ---------- progress ----------
   const KEY = 'capy.progress.v1';
-  const fresh = () => ({ lessons: {}, unlockAll: false, openModules: [], sound: true, voice: '' });
+  // How long a picture stays on screen in the memory lessons. A parent can lengthen or shorten it.
+  const PEEKS = [{ scale: 1, label: 'Normal' }, { scale: 1.7, label: 'Long' }, { scale: 0.7, label: 'Short' }];
+  const fresh = () => ({ lessons: {}, unlockAll: false, openModules: [], sound: true, voice: '', peekScale: 1 });
 
   function load(storage) {
     try {
       const p = JSON.parse(storage.getItem(KEY));
       return p && typeof p === 'object'
-        ? { ...fresh(), ...p, lessons: { ...(p.lessons || {}) }, openModules: Array.isArray(p.openModules) ? p.openModules.filter(Number.isInteger) : [] }
+        ? { ...fresh(), ...p, lessons: { ...(p.lessons || {}) }, openModules: Array.isArray(p.openModules) ? p.openModules.filter(Number.isInteger) : [],
+            peekScale: PEEKS.some(x => x.scale === p.peekScale) ? p.peekScale : 1 }
         : fresh();
     } catch (e) {
       return fresh();
@@ -79,6 +82,12 @@
     return p.unlockAll || (module !== undefined && p.openModules.includes(module)) || i <= 0 ||
       Boolean(p.lessons[order[i - 1]] && p.lessons[order[i - 1]].passed);
   }
+  const peekLabel = p => (PEEKS.find(x => x.scale === p.peekScale) || PEEKS[0]).label;
+  function cyclePeek(p) {
+    const at = PEEKS.findIndex(x => x.scale === p.peekScale);
+    p.peekScale = PEEKS[(at + 1) % PEEKS.length].scale;
+    return p.peekScale;
+  }
   // Open or close a module for the child. Returns true when it is now open.
   function toggleModule(p, module) {
     const at = p.openModules.indexOf(module);
@@ -86,5 +95,5 @@
     return at < 0;
   }
 
-  return { start, current, submit, result, load, save, record, wipe, unlocked, toggleModule, KEY };
+  return { start, current, submit, result, load, save, record, wipe, unlocked, toggleModule, peekLabel, cyclePeek, PEEKS, KEY };
 });
