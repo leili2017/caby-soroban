@@ -11,7 +11,7 @@ Two apps live in this repo. Both are static files with no server, build step, or
 
 Each module has its own friend and colours (`themes.js`): Capy the capybara, Hedgie the hedgehog,
 Axo the axolotl, Fenny the fennec fox, Hammy the hamster, Bun the rabbit, and Draco the green dragon.
-Module 1 uses the first, module 2 the next, and so on, wrapping after the seventh. Five modules exist so far, so Capy, Hedgie, Axo, Fenny and Hammy appear; Bun and Draco arrive with modules 6 and 7.
+Module 1 uses the first, module 2 the next, and so on, wrapping after the seventh. Six modules exist so far, so Capy, Hedgie, Axo, Fenny, Hammy and Bun appear; Draco arrives with module 7.
 
 Files: `soroban.js` (bead logic and SVG abacus), `lessons.js` (lesson data), `runner.js`
 (session scoring and saved progress), `speech.js` (voice choice and phrases), `themes.js` (friends and colours), `app.js` (screens, speech, parent area), `style.css`.
@@ -24,6 +24,8 @@ Lessons are data. To add one, append an entry to `LESSONS` in `lessons.js` with 
 - **Module 3, Adding and taking away:** moves the beads allow directly (bottom beads for 1 to 4, top bead for 5), single rod.
 - **Module 4, Friends of five:** moves that cross 5, where the top bead and bottom beads move in opposite directions.
 - **Module 5, Friends of ten:** carrying and borrowing across the tens and ones rods.
+- **Module 6, Bigger numbers (Bun the rabbit):** two-digit numbers with every technique. 6.1 moves only the ones
+  rod, 6.2 only the tens rod, 6.3 both rods without carrying, 6.4 is a mix, 6.5 carries and borrows.
 
 In modules 3 to 5 the beads start on the first number and he moves them to the answer. The first three
 items of a lesson show a dotted outline of the answer and, for friends of five and ten, speak the method

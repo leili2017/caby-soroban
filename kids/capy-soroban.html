@@ -432,6 +432,27 @@ button:focus-visible { outline: 4px solid var(--gold); outline-offset: 2px; }
     return out;
   }
 
+  // ---- module 6: bigger numbers ----
+  const onesOf = n => n % 10, tensOf = n => Math.floor(n / 10);
+  const tag = (list, five) => list.map(([x, d]) => ({ x, d, five }));
+  // The method for a friend-of-five move, said for one named rod. `d` is the change on that rod.
+  const howRod = (rod, d) => {
+    const k = 5 - Math.abs(d);
+    return d > 0 ? `Try it on the ${rod} rod: add 5, then take away ${k}.` : `Try it on the ${rod} rod: take away 5, then put back ${k}.`;
+  };
+  // The ones rod runs past 9 (carry) or below 0 (borrow). Only meaningful when the amount's ones digit is not 0.
+  const wraps = (n, b, sign) => (sign > 0 ? onesOf(b) < onesOf(n) : onesOf(b) > onesOf(n));
+  // Every (n, +/-amount): start 1..99, a two-digit amount whose ones digit is not 0, result kept in 1..99
+  // (never an empty board, which would read as a trivial x minus x).
+  function twoRod(sign, ok) {
+    const out = [];
+    for (let n = 1; n <= 99; n++) for (let m = 11; m <= 99; m++) {
+      const b = n + sign * m;
+      if (m % 10 !== 0 && b >= 1 && b <= 99 && ok(n, b)) out.push([n, sign * m]);
+    }
+    return out;
+  }
+
   // Wrong answers a child is likely to pick.
   function digitChoices(rng, d) {
     const near = [d + 1, d - 1, d < 5 ? d + 5 : d - 5].filter(x => x >= 0 && x <= 9);
@@ -452,6 +473,7 @@ button:focus-visible { outline: 4px solid var(--gold); outline-offset: 2px; }
     { id: 3, title: 'Adding and taking away' },
     { id: 4, title: 'Friends of five' },
     { id: 5, title: 'Friends of ten' },
+    { id: 6, title: 'Bigger numbers' },
   ];
 
   const LESSONS = [
@@ -603,6 +625,58 @@ button:focus-visible { outline: 4px solid var(--gold); outline-offset: 2px; }
       gen: rng => shuffle(rng, [
         ...spread(rng, tenPool(+1, false), 6), ...spread(rng, tenPool(-1, false), 6),
       ]).map(([n, d]) => moveItem(n, d, 2)),
+    },
+
+    // ---------- Module 6: bigger numbers (two rods, every technique) ----------
+    // Lessons 6.1 and 6.2 move one rod and leave the other alone; 6.3 to 6.5 bring them together.
+    {
+      id: '6.1', module: 6, icon: '🌼', title: 'Big numbers: ones rod', rods: 2, count: 10, mastery: 8,
+      intro: 'Bigger numbers! Only the ones rod changes. The tens rod stays where it is.',
+      gen: rng => shuffle(rng, [
+        ...tag(spread(rng, ADD5, 3), true), ...tag(spread(rng, SUB5, 3), true),
+        ...tag(spread(rng, pairs(0, 9, +1, isDirect), 2), false), ...tag(spread(rng, pairs(1, 9, -1, isDirect), 2), false),
+      ]).map(({ x: a, d, five }, i) =>
+        moveItem(int(rng, 1, 9) * 10 + a, d, 2, { hint: i < 3, how: five ? howRod('ones', d) : undefined })),
+    },
+    {
+      id: '6.2', module: 6, icon: '🍀', title: 'Big numbers: tens rod', rods: 2, count: 10, mastery: 8,
+      intro: 'Now only the tens rod changes. The ones rod stays where it is.',
+      gen: rng => shuffle(rng, [
+        ...tag(spread(rng, ADD5, 3), true), ...tag(spread(rng, SUB5, 3), true),
+        ...tag(spread(rng, pairs(0, 9, +1, isDirect), 2), false), ...tag(spread(rng, pairs(1, 9, -1, isDirect), 2), false),
+      ]).map(({ x: t, d, five }, i) =>
+        moveItem(t * 10 + int(rng, 1, 9), d * 10, 2, { hint: i < 3, how: five ? howRod('tens', d) : undefined })),
+    },
+    {
+      id: '6.3', module: 6, icon: '🌻', title: 'Both rods together', rods: 2, count: 10, mastery: 8,
+      intro: 'Both rods change this time! Do the tens, then the ones.',
+      gen: rng => shuffle(rng, [
+        ...spread(rng, twoRod(+1, (n, b) => !wraps(n, b, +1)), 5),
+        ...spread(rng, twoRod(-1, (n, b) => !wraps(n, b, -1)), 5),
+      ]).map(([n, d], i) => moveItem(n, d, 2, { hint: i < 3 })),
+    },
+    {
+      id: '6.4', module: 6, icon: '🥕', title: 'Big number mix', rods: 2, count: 12, mastery: 10,
+      intro: 'A mix of everything! Look at the sign and the number, then move the beads.',
+      gen: rng => {
+        const four = () => [
+          ...spread(rng, ADD5, 1), ...spread(rng, SUB5, 1),
+          ...spread(rng, pairs(0, 9, +1, isDirect), 1), ...spread(rng, pairs(1, 9, -1, isDirect), 1),
+        ];
+        const onesRod = four().map(([a, d]) => [int(rng, 1, 9) * 10 + a, d]);
+        const tensRod = four().map(([t, d]) => [t * 10 + int(rng, 1, 9), d * 10]);
+        const carry = [...spread(rng, tenPool(+1, false), 1), ...spread(rng, tenPool(-1, false), 1)];
+        const both = [...spread(rng, twoRod(+1, (n, b) => !wraps(n, b, +1)), 1), ...spread(rng, twoRod(-1, (n, b) => !wraps(n, b, -1)), 1)];
+        return shuffle(rng, [...onesRod, ...tensRod, ...carry, ...both]).map(([n, d]) => moveItem(n, d, 2));
+      },
+    },
+    {
+      id: '6.5', module: 6, icon: '🏆', title: 'Big number challenge', rods: 2, count: 10, mastery: 8,
+      intro: 'Big carrying and borrowing! Take your time.',
+      gen: rng => shuffle(rng, [
+        ...spread(rng, twoRod(+1, (n, b) => wraps(n, b, +1)), 5),
+        ...spread(rng, twoRod(-1, (n, b) => wraps(n, b, -1)), 5),
+      ]).map(([n, d], i) => moveItem(n, d, 2, { hint: i < 3 })),
     },
   ];
 

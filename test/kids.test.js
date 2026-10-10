@@ -477,8 +477,8 @@ const M4 = ['4.1', '4.2', '4.3'], M5 = ['5.1', '5.2', '5.3'];
 const direct = (a, b) => { const m = dir(a, b); return b > a ? m.h >= 0 && m.e >= 0 : m.h <= 0 && m.e <= 0; };
 const opposite = (a, b) => { const m = dir(a, b); return (m.h > 0 && m.e < 0) || (m.h < 0 && m.e > 0); };
 test('modules 4 and 5 exist, in order, after module 3', () => {
-  assert.deepStrictEqual(L.ORDER.slice(13), [...M4, ...M5]);
-  assert.deepStrictEqual(L.MODULES.map(m => m.id), [1, 2, 3, 4, 5]);
+  assert.deepStrictEqual(L.ORDER.slice(13, 19), [...M4, ...M5]);
+  assert.deepStrictEqual(L.MODULES.map(m => m.id), [1, 2, 3, 4, 5, 6]);
   assert.deepStrictEqual(M5.map(id => L.byId[id].rods), [2, 2, 2]);
 });
 test('4.1 and 4.2: every move crosses five, so the top and bottom beads move in opposite directions', () => {
@@ -609,6 +609,120 @@ test('the old three-argument call still works, and Unlock all still opens everyt
   assert.strictEqual(R.unlocked(p, L.ORDER, '1.2'), false);
   p.unlockAll = true;
   assert.strictEqual(openIds(p).length, L.ORDER.length);
+});
+
+// ---------- module 6: bigger numbers ----------
+const M6 = ['6.1', '6.2', '6.3', '6.4', '6.5'];
+const rodMove = (a, b, r) => { const x = S.toDigits(a, 2)[r], y = S.toDigits(b, 2)[r]; return { x, y }; };
+// How a single rod changes: 'same' | 'direct' | 'five' (top and bottom move opposite ways).
+const kind = (x, y) => (x === y ? 'same' : opposite(x, y) ? 'five' : direct(x, y) ? 'direct' : 'bad');
+const carries = (a, b) => (b > a ? b % 10 < a % 10 : b % 10 > a % 10);
+const eachM6 = (id, fn, seeds = 300) => { for (let sd = 0; sd < seeds; sd++) L.byId[id].gen(rng(sd)).forEach((i, k, all) => fn(i, k, all, sd)); };
+test('module 6 exists after module 5 with five two-rod lessons', () => {
+  assert.deepStrictEqual(L.ORDER.slice(19), M6);
+  assert.ok(L.MODULES.some(m => m.id === 6 && m.title === 'Bigger numbers'));
+  M6.forEach(id => { assert.strictEqual(L.byId[id].rods, 2); assert.strictEqual(L.byId[id].module, 6); assert.ok(L.byId[id].mastery <= L.byId[id].count); });
+  assert.strictEqual(Th.forModule(6), 'rabbit');
+});
+test('module 6: every item is well formed, in range, never ends on an empty board (300 seeds)', () => {
+  for (const id of M6) eachM6(id, (i, k, all) => {
+    const a = i.show, b = i.answer;
+    assert.strictEqual(all.length, L.byId[id].count, `${id} count`);
+    assert.ok(a >= 1 && a <= 99 && b >= 1 && b <= 99, `${id} ${a}->${b}`);
+    assert.deepStrictEqual(i.start, S.toDigits(a, 2));
+    assert.deepStrictEqual(i.target, S.toDigits(b, 2));
+    assert.notStrictEqual(a, b);
+    assert.strictEqual(i.badge, (b > a ? '+' : '\u2212') + Math.abs(b - a));
+    assert.ok(i.say.includes(String(a)) && /plus|minus/.test(i.say));
+  });
+});
+test('module 6: no repeated problem within a lesson', () => {
+  for (const id of M6) eachM6(id, (i, k, all, sd) => {
+    if (k === 0) assert.strictEqual(new Set(all.map(x => x.show + x.badge)).size, all.length, `${id} seed ${sd} repeats`);
+  }, 200);
+});
+test('6.1 moves only the ones rod; the tens rod never changes', () => {
+  eachM6('6.1', i => {
+    assert.strictEqual(Math.floor(i.show / 10), Math.floor(i.answer / 10), `${i.show}->${i.answer}`);
+    const m = rodMove(i.show, i.answer, 1);
+    assert.notStrictEqual(kind(m.x, m.y), 'bad'); assert.notStrictEqual(kind(m.x, m.y), 'same');
+  });
+});
+test('6.1 mixes friends of five with direct moves, evenly, with the method spoken only on hinted friends of five', () => {
+  for (let sd = 0; sd < 200; sd++) {
+    const items = L.byId['6.1'].gen(rng(sd));
+    const five = items.filter(i => kind(...Object.values(rodMove(i.show, i.answer, 1))) === 'five');
+    assert.strictEqual(five.length, 6, `seed ${sd}`);
+    assert.strictEqual(items.filter(i => i.answer > i.show).length, 5);
+    items.forEach((i, k) => {
+      assert.strictEqual(Boolean(i.hint), k < 3);
+      const spoken = i.say.includes('Try it on the ones rod');
+      assert.strictEqual(spoken, k < 3 && five.includes(i), `seed ${sd} item ${k} ${i.say}`);
+    });
+  }
+});
+test('6.2 moves only the tens rod, in whole tens; the ones rod never changes', () => {
+  eachM6('6.2', i => {
+    assert.strictEqual(i.show % 10, i.answer % 10, `${i.show}->${i.answer}`);
+    assert.strictEqual(Math.abs(i.answer - i.show) % 10, 0);
+    assert.ok(i.show % 10 !== 0, 'ones digit is nonzero so the board is never empty');
+    const m = rodMove(i.show, i.answer, 0);
+    assert.notStrictEqual(kind(m.x, m.y), 'bad'); assert.notStrictEqual(kind(m.x, m.y), 'same');
+  });
+});
+test('6.2 includes friends of five on the tens rod and names the tens rod in the hint', () => {
+  for (let sd = 0; sd < 200; sd++) {
+    const items = L.byId['6.2'].gen(rng(sd));
+    const five = items.filter(i => kind(...Object.values(rodMove(i.show, i.answer, 0))) === 'five');
+    assert.strictEqual(five.length, 6);
+    items.forEach((i, k) => assert.strictEqual(i.say.includes('Try it on the tens rod'), k < 3 && five.includes(i)));
+  }
+});
+test('6.3 changes both rods, each directly, with no carry or borrow', () => {
+  eachM6('6.3', i => {
+    const t = rodMove(i.show, i.answer, 0), o = rodMove(i.show, i.answer, 1);
+    assert.notStrictEqual(t.x, t.y, `${i.show}->${i.answer} tens should change`);
+    assert.notStrictEqual(o.x, o.y, `${i.show}->${i.answer} ones should change`);
+    assert.ok(!carries(i.show, i.answer), `${i.show}->${i.answer} carries`);
+    assert.ok(i.answer - i.show > 10 || i.show - i.answer > 10);
+  });
+});
+test('6.3 is balanced between adding and taking away, and hints only the first three', () => {
+  for (let sd = 0; sd < 200; sd++) {
+    const items = L.byId['6.3'].gen(rng(sd));
+    assert.strictEqual(items.filter(i => i.answer > i.show).length, 5);
+    items.forEach((i, k) => assert.strictEqual(Boolean(i.hint), k < 3));
+  }
+});
+test('6.5 always carries or borrows on the ones rod, using amounts with a nonzero ones digit', () => {
+  eachM6('6.5', i => {
+    assert.ok(carries(i.show, i.answer), `${i.show}->${i.answer} must carry or borrow`);
+    assert.notStrictEqual(Math.abs(i.answer - i.show) % 10, 0);
+    assert.ok(Math.abs(i.answer - i.show) >= 11);
+  });
+  for (let sd = 0; sd < 200; sd++) assert.strictEqual(L.byId['6.5'].gen(rng(sd)).filter(i => i.answer > i.show).length, 5);
+});
+test('6.4 mixes four kinds of move, three of each sign-pair, in equal measure', () => {
+  for (let sd = 0; sd < 300; sd++) {
+    const items = L.byId['6.4'].gen(rng(sd));
+    assert.strictEqual(items.length, 12);
+    let onesOnly = 0, tensOnly = 0, carry = 0, both = 0;
+    items.forEach(i => {
+      const sameTens = Math.floor(i.show / 10) === Math.floor(i.answer / 10), sameOnes = i.show % 10 === i.answer % 10;
+      if (sameTens) onesOnly++;
+      else if (sameOnes) tensOnly++;
+      else if (carries(i.show, i.answer)) carry++;
+      else both++;
+    });
+    assert.deepStrictEqual([onesOnly, tensOnly, carry, both], [4, 4, 2, 2], `seed ${sd}`);
+    assert.strictEqual(items.filter(i => i.answer > i.show).length, 6);
+    items.forEach(i => assert.strictEqual(i.hint, undefined));
+  }
+});
+test('module 6: every rod move across all lessons is one the beads can actually make', () => {
+  for (const id of M6) eachM6(id, i => {
+    for (const r of [0, 1]) { const m = rodMove(i.show, i.answer, r); assert.ok(['same', 'direct', 'five'].includes(kind(m.x, m.y)) || carries(i.show, i.answer), `${id} ${i.show}->${i.answer} rod ${r}`); }
+  }, 100);
 });
 
 console.log(`${passed} tests passed${process.exitCode ? ', with failures' : ''}`);
