@@ -55,6 +55,17 @@ button:focus-visible { outline: 4px solid var(--gold); outline-offset: 2px; }
 .lesson { flex: 1; display: flex; flex-direction: column; padding: 10px 22px 16px; min-height: 0; }
 .top { display: flex; align-items: center; gap: 14px; }
 .round { width: 64px; height: 64px; border-radius: 50%; background: var(--card); font-size: 30px; box-shadow: 0 4px 0 var(--edge); flex: none; }
+.coin { display: block; }
+.purse { display: flex; align-items: center; gap: 6px; background: var(--card); border-radius: 36px; padding: 5px 16px 5px 8px; box-shadow: 0 4px 0 var(--edge); font-size: 30px; font-weight: 800; min-width: 104px; position: relative; flex: none; }
+.purse .coin { width: 46px; height: 46px; flex: none; }
+.purse .pop { position: absolute; right: 10px; top: -10px; font-size: 26px; pointer-events: none; animation: rise 1.1s ease-out forwards; }
+.pop.good { color: var(--brand-dark); } .pop.bad { color: var(--bad); }
+@keyframes rise { from { transform: translateY(10px); opacity: 0; } 20% { opacity: 1; } to { transform: translateY(-24px); opacity: 0; } }
+.bank { margin-left: auto; display: flex; align-items: center; gap: 6px; font-size: 22px; font-weight: 800; flex: none; }
+.bank .coin { width: 34px; height: 34px; }
+.bank.sm { margin-left: 0; font-size: 16px; } .bank.sm .coin { width: 24px; height: 24px; }
+.earned { display: flex; align-items: center; gap: 12px; font-size: 48px; font-weight: 800; }
+.earned .coin { width: 68px; height: 68px; }
 .dots { flex: 1; display: flex; gap: 8px; justify-content: center; }
 .dots i { width: 16px; height: 16px; border-radius: 50%; background: var(--dot); }
 .dots i.done { background: var(--brand); }
@@ -143,7 +154,7 @@ button:focus-visible { outline: 4px solid var(--gold); outline-offset: 2px; }
   .module h2 .capy { width: 56px; }
 }
 @media (prefers-reduced-motion: reduce) {
-  .capy.happy, .choice.pulse { animation: none; }
+  .capy.happy, .choice.pulse, .purse .pop { animation: none; }
   .soroban .bead { transition: none; }
 }
 
@@ -818,14 +829,20 @@ button:focus-visible { outline: 4px solid var(--gold); outline-offset: 2px; }
   const KEY = 'capy.progress.v1';
   // How long a picture stays on screen in the memory lessons. A parent can lengthen or shorten it.
   const PEEKS = [{ scale: 1, label: 'Normal' }, { scale: 1.7, label: 'Long' }, { scale: 0.7, label: 'Short' }];
-  const fresh = () => ({ lessons: {}, unlockAll: false, openModules: [], sound: true, voice: '', peekScale: 1 });
+  // coins: { copper: 12, ... } one count per coin type. Anything that is not a positive whole number is dropped.
+  function cleanCoins(c) {
+    const out = {};
+    if (c && typeof c === 'object' && !Array.isArray(c)) for (const k of Object.keys(c)) if (Number.isInteger(c[k]) && c[k] > 0) out[k] = c[k];
+    return out;
+  }
+  const fresh = () => ({ lessons: {}, unlockAll: false, openModules: [], sound: true, voice: '', peekScale: 1, coins: {} });
 
   function load(storage) {
     try {
       const p = JSON.parse(storage.getItem(KEY));
       return p && typeof p === 'object'
         ? { ...fresh(), ...p, lessons: { ...(p.lessons || {}) }, openModules: Array.isArray(p.openModules) ? p.openModules.filter(Number.isInteger) : [],
-            peekScale: PEEKS.some(x => x.scale === p.peekScale) ? p.peekScale : 1 }
+            peekScale: PEEKS.some(x => x.scale === p.peekScale) ? p.peekScale : 1, coins: cleanCoins(p.coins) }
         : fresh();
     } catch (e) {
       return fresh();
@@ -845,11 +862,12 @@ button:focus-visible { outline: 4px solid var(--gold); outline-offset: 2px; }
     };
     return p;
   }
-  // Erase scores and unlocks but keep the settings a parent chose (sound, voice).
+  // Erase scores, unlocks and coins but keep the settings a parent chose (sound, voice, memory time).
   function wipe(p) {
     p.lessons = {};
     p.unlockAll = false;
     p.openModules = [];
+    p.coins = {};
     return p;
   }
   // A lesson opens once the one before it is passed.
@@ -1108,6 +1126,134 @@ button:focus-visible { outline: 4px solid var(--gold); outline-offset: 2px; }
 
 </script>
 <script>
+// Coins: one coin type per module, what each question is worth, and the purse.
+// No DOM, so it is fully testable.
+(function (root, factory) {
+  const api = factory();
+  if (typeof module === 'object' && module.exports) module.exports = api;
+  else root.Coins = api;
+})(typeof self !== 'undefined' ? self : this, function () {
+  'use strict';
+
+  const f = n => Math.round(n * 10) / 10;
+  const poly = (pts, fill, extra = '') => `<polygon points="${pts}" fill="${fill}" ${extra}/>`;
+  const circ = (cx, cy, r, fill, extra = '') => `<circle cx="${cx}" cy="${cy}" r="${r}" fill="${fill}" ${extra}/>`;
+  function starPoints(cx, cy, ro, ri, n) {
+    const pts = [];
+    for (let i = 0; i < n * 2; i++) {
+      const r = i % 2 ? ri : ro, a = -Math.PI / 2 + (i * Math.PI) / n;
+      pts.push(`${f(cx + r * Math.cos(a))},${f(cy + r * Math.sin(a))}`);
+    }
+    return pts.join(' ');
+  }
+
+  // ---------- emblems (centred on 24,24) ----------
+  // Every coin has its own shape as well as its own colour, so colour is never the only clue.
+  const EMBLEMS = {
+    star: (ink) => poly(starPoints(24, 24.5, 11, 4.8, 5), ink),
+    moon: (ink) => `<path d="M30 13.5 A11.5 11.5 0 1 0 30 34.5 A9 9 0 1 1 30 13.5Z" fill="${ink}"/>`,
+    sun: (ink) => circ(24, 24, 5.6, ink) + [...Array(8)].map((_, i) => {
+      const a = (i * Math.PI) / 4;
+      return `<line x1="${f(24 + 9.5 * Math.cos(a))}" y1="${f(24 + 9.5 * Math.sin(a))}" x2="${f(24 + 13 * Math.cos(a))}" y2="${f(24 + 13 * Math.sin(a))}" stroke="${ink}" stroke-width="2.8" stroke-linecap="round"/>`;
+    }).join(''),
+    diamond: (ink, face) => poly('24,11 35,24 24,37 13,24', ink) + poly('24,16 30,24 24,32 18,24', face, 'opacity=".4"'),
+    heart: (ink) => `<path d="M24 35 C10 26 13 14 20.5 15.5 C22.5 16 24 18 24 18 C24 18 25.5 16 27.5 15.5 C35 14 38 26 24 35Z" fill="${ink}"/>`,
+    flower: (ink, face) => [...Array(5)].map((_, i) => {
+      const a = -Math.PI / 2 + (i * 2 * Math.PI) / 5;
+      return circ(f(24 + 7.2 * Math.cos(a)), f(24 + 7.2 * Math.sin(a)), 4.6, ink);
+    }).join('') + circ(24, 24, 3.6, face),
+    bolt: (ink) => poly('27.5,10.5 16,27 22.5,27 20,37.5 32.5,20 25.5,20', ink, 'stroke-linejoin="round"'),
+  };
+
+  // Later modules pay in rarer metals and gems.
+  const COINS = {
+    copper:   { name: 'copper',   rim: '#9c5a24', face: '#e0985a', ink: '#8a4a18', emblem: 'star' },
+    silver:   { name: 'silver',   rim: '#7d8895', face: '#dfe4ea', ink: '#66717e', emblem: 'moon' },
+    gold:     { name: 'gold',     rim: '#b88400', face: '#ffd84a', ink: '#9a6a00', emblem: 'sun' },
+    emerald:  { name: 'emerald',  rim: '#168a4c', face: '#6fe0a0', ink: '#0f6d3b', emblem: 'diamond' },
+    sapphire: { name: 'sapphire', rim: '#2a62c4', face: '#8bb8ff', ink: '#1c4a9e', emblem: 'heart' },
+    ruby:     { name: 'ruby',     rim: '#b8203f', face: '#ff8aa0', ink: '#8f1830', emblem: 'flower' },
+    amethyst: { name: 'amethyst', rim: '#6f3fb8', face: '#cfb0f7', ink: '#542c92', emblem: 'bolt' },
+  };
+  for (const id in COINS) COINS[id].id = id;
+  const ORDER = ['copper', 'silver', 'gold', 'emerald', 'sapphire', 'ruby', 'amethyst'];
+
+  const get = id => COINS[id] || COINS.copper;
+  // Module N pays in coin N; the list wraps after the last coin.
+  const forModule = n => ORDER[(((n | 0) - 1) % ORDER.length + ORDER.length) % ORDER.length];
+
+  function svg(id) {
+    const c = get(id);
+    return `<svg class="coin" viewBox="0 0 48 48" role="img" aria-label="${c.name} coin">` +
+      circ(24, 24, 22, c.rim) + circ(24, 24, 17.5, c.face, `stroke="${c.rim}" stroke-width="1.6"`) +
+      EMBLEMS[c.emblem](c.ink, c.face) +
+      '<path d="M11.5 17 A14 14 0 0 1 21 10.5" stroke="#fff" stroke-opacity=".65" stroke-width="3" fill="none" stroke-linecap="round"/>' +
+      '</svg>';
+  }
+  const label = (id, n) => `${n} ${get(id).name} coin${n === 1 ? '' : 's'}`;
+
+  // ---------- what a question is worth (1 to 5) ----------
+  const num = ds => ds.reduce((a, d) => a * 10 + d, 0);
+  const sum = ds => ds.reduce((a, d) => a + d, 0);
+  // How one rod changes: the top bead and the bottom beads moving in opposite directions is a friend of five.
+  function rodChange(x, y) {
+    if (x === y) return 'same';
+    const dh = (y >= 5 ? 1 : 0) - (x >= 5 ? 1 : 0), de = (y % 5) - (x % 5);
+    return (dh > 0 && de < 0) || (dh < 0 && de > 0) ? 'five' : 'direct';
+  }
+  // A move from `start` to `target`: 1 for a direct move, +1 for a friend of five, +3 for a carry or borrow
+  // (or +1 when both rods change without one). Counting on by one across a ten is a small carry: 2 coins.
+  function moveWorth(start, target) {
+    const a = num(start), b = num(target);
+    let changed = 0, five = false;
+    start.forEach((x, r) => {
+      const k = rodChange(x, target[r]);
+      if (k !== 'same') changed++;
+      if (k === 'five') five = true;
+    });
+    const wraps = start.length === 2 && ((b > a && b % 10 < a % 10) || (b < a && b % 10 > a % 10));
+    if (wraps && Math.abs(b - a) === 1) return 2;
+    return Math.min(5, 1 + (five ? 1 : 0) + (wraps ? 3 : changed === 2 ? 1 : 0));
+  }
+  function worth(item) {
+    if (!item || !item.target) return 1;
+    const rods = item.rods || item.target.length;
+    switch (item.kind) {
+      case 'read': return rods === 2 ? 2 : 1;
+      case 'flash': case 'recall': return rods === 2 ? 3 : 2;           // remembering is harder than looking
+      case 'mind': return Math.min(5, moveWorth(item.start, item.target) + 2);   // and so is doing it in his head
+      default: return !item.start || sum(item.start) === 0 ? (rods === 2 ? 2 : 1) : moveWorth(item.start, item.target);
+    }
+  }
+
+  // ---------- earning and losing ----------
+  // A right answer pays the question's worth. The first wrong try on a question costs one coin; more wrong
+  // tries on the same question cost nothing more, so a question he eventually gets right never leaves him
+  // behind (it is worth at least 1). A repeat of a missed question is practice: it neither pays nor costs.
+  function settle(item, { ok, attemptsBefore = 0 }) {
+    if (!item || item.retry) return 0;
+    if (ok) return worth(item);
+    return attemptsBefore === 0 ? -1 : 0;
+  }
+
+  // ---------- the purse (progress.coins, one count per coin type) ----------
+  const count = (p, id) => (p.coins && p.coins[id]) || 0;
+  // Returns the change that was actually applied; the purse never goes below zero.
+  function add(p, id, delta) {
+    if (!p.coins) p.coins = {};
+    const before = count(p, id), after = Math.max(0, before + delta);
+    p.coins[id] = after;
+    return after - before;
+  }
+
+  // Settle one answer into the purse. Returns the change actually applied (the purse floors at zero).
+  const applyAnswer = (p, coinId, item, ok, attemptsBefore) => add(p, coinId, settle(item, { ok, attemptsBefore }));
+
+  return { COINS, ORDER, get, forModule, svg, label, worth, moveWorth, settle, count, add, applyAnswer };
+});
+
+</script>
+<script>
 // Soroban Friends: screens, speech, and the parent panel. Logic lives in soroban.js, lessons.js, runner.js, speech.js, themes.js.
 (function () {
   'use strict';
@@ -1172,7 +1318,7 @@ button:focus-visible { outline: 4px solid var(--gold); outline-offset: 2px; }
       <section class="home">
         <div class="hero">${capy('')}<div><h1>Soroban Friends</h1><p>${theme.name} says: pick a game!</p></div></div>
         ${MODULES.map(m => `
-          <div class="module" style="${Themes.css(themeFor(m.id))}"><h2><span class="num">${m.id}</span>${Themes.svg(Themes.forModule(m.id))}<span class="mtitle">${m.title}</span></h2>
+          <div class="module" style="${Themes.css(themeFor(m.id))}"><h2><span class="num">${m.id}</span>${Themes.svg(Themes.forModule(m.id))}<span class="mtitle">${m.title}</span><span class="bank" aria-label="${Coins.label(Coins.forModule(m.id), Coins.count(progress, Coins.forModule(m.id)))}">${Coins.svg(Coins.forModule(m.id))}<b>${Coins.count(progress, Coins.forModule(m.id))}</b></span></h2>
           <div class="path">${LESSONS.filter(l => l.module === m.id).map(l => {
             const ok = Runner.unlocked(progress, ORDER, l.id, l.module);
             const st = (progress.lessons[l.id] || {}).stars || 0;
@@ -1193,12 +1339,13 @@ button:focus-visible { outline: 4px solid var(--gold); outline-offset: 2px; }
     theme = themeFor(lesson.module);
     applyTheme(theme);
     session = Runner.start(lesson, mulberry32((Date.now() ^ (Math.random() * 1e9)) >>> 0));
-    streak = 0;
+    streak = 0; sessionCoins = 0;
     app.innerHTML = `
       <section class="lesson">
         <div class="top">
           <button class="round" id="back" aria-label="Back">‹</button>
           <div class="dots" id="dots"></div>
+          <div class="purse" id="purse"></div>
           <button class="round" id="again" aria-label="Say it again">🔊</button>
         </div>
         <div class="stage">
@@ -1211,6 +1358,7 @@ button:focus-visible { outline: 4px solid var(--gold); outline-offset: 2px; }
     document.getElementById('again').addEventListener('click', () => repeatText && say(repeatText));
     holdToOpen(document.getElementById('gear'), () => openParent());
     introPending = lesson.intro;
+    renderPurse(0);
     item();
   }
 
@@ -1307,12 +1455,34 @@ button:focus-visible { outline: 4px solid var(--gold); outline-offset: 2px; }
     idleTimer = setTimeout(() => { if (!locked && it === current) answer(false); }, SETTLE_MS);
   }
 
+  // ---------- coins ----------
+  // Each module pays in its own coin. A right answer earns the question's worth; the first wrong try on a
+  // question costs one coin (never below zero); repeats of missed questions are free practice.
+  let sessionCoins = 0, popTimer = null;
+  const coinOf = lesson => Coins.forModule(lesson.module);
+  function renderPurse(delta) {
+    clearTimeout(popTimer);
+    const el = document.getElementById('purse');
+    if (!el || !session) return;
+    const id = coinOf(session.lesson), n = Coins.count(progress, id);
+    el.setAttribute('aria-label', Coins.label(id, n));
+    el.innerHTML = `${Coins.svg(id)}<b>${n}</b>${delta ? `<span class="pop ${delta > 0 ? 'good' : 'bad'}">${delta > 0 ? '+' : '\u2212'}${Math.abs(delta)}</span>` : ''}`;
+    if (delta) popTimer = setTimeout(() => renderPurse(0), 1200);
+  }
+  function payCoins(it, ok, attemptsBefore) {
+    const applied = Coins.applyAnswer(progress, coinOf(session.lesson), it, ok, attemptsBefore);
+    sessionCoins += applied;
+    if (applied) { persist(); renderPurse(applied); }
+  }
+
   function answer(ok) {
     if (locked) return;
     clearTimeout(idleTimer);
     const it = current;
     const first = session.attempts === 0 && !it.retry;   // read before submit() resets it
+    const attemptsBefore = session.attempts;
     const r = Runner.submit(session, ok);
+    payCoins(it, ok, attemptsBefore);
     if (r.outcome === 'correct') {
       locked = true; sb.lock(true);
       if (it.kind === 'flash' || it.kind === 'mind') { sb.set(it.target); sb.cover(false); }   // show him the beads he pictured
@@ -1333,12 +1503,14 @@ button:focus-visible { outline: 4px solid var(--gold); outline-offset: 2px; }
     const res = Runner.result(session);
     Runner.record(progress, session.lesson.id, res, Date.now());
     persist();
+    const coin = coinOf(session.lesson), earned = sessionCoins;
     const next = ORDER[ORDER.indexOf(session.lesson.id) + 1];
     app.innerHTML = `
       <section class="result">
         ${capy(res.passed ? 'happy' : '')}
         <h1>${res.passed ? 'Amazing!' : 'Good practice!'}</h1>
         <div class="stars" aria-label="${res.stars} stars">${stars(res.stars)}</div>
+        ${earned > 0 ? `<div class="earned" aria-label="${Coins.label(coin, earned)}">${Coins.svg(coin)}<b>+${earned}</b></div>` : ''}
         <div class="row">
           <button class="big alt" id="r-again" aria-label="Play again">↻</button>
           ${res.passed && next ? '<button class="big" id="r-next" aria-label="Next game">›</button>' : ''}
@@ -1346,7 +1518,7 @@ button:focus-visible { outline: 4px solid var(--gold); outline-offset: 2px; }
         </div>
       </section>`;
     chime(res.passed);
-    say(phrases.done(res.passed));
+    say(phrases.done(res.passed) + (earned > 0 ? ` You earned ${Coins.label(coin, earned)}.` : ''));
     document.getElementById('r-again').addEventListener('click', () => play(session.lesson.id));
     document.getElementById('r-home').addEventListener('click', home);
     const n = document.getElementById('r-next');
@@ -1370,7 +1542,8 @@ button:focus-visible { outline: 4px solid var(--gold); outline-offset: 2px; }
       const forced = progress.openModules.includes(m.id);
       const control = open ? '<span class="ok">Open</span>'
         : `<button class="pbtn ${forced ? 'go' : ''}" data-mod="${m.id}">${forced ? 'Unlocked. Tap to lock' : 'Unlock'}</button>`;
-      return `<div class="modrow"><span><b>${m.id}</b> ${m.title}</span>${control}</div>`;
+      const cid = Coins.forModule(m.id);
+      return `<div class="modrow"><span><b>${m.id}</b> ${m.title}</span><span class="bank sm">${Coins.svg(cid)}<b>${Coins.count(progress, cid)}</b></span>${control}</div>`;
     }).join('');
     const rows = LESSONS.map(l => {
       const p = progress.lessons[l.id];

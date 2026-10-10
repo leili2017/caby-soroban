@@ -62,7 +62,7 @@
       <section class="home">
         <div class="hero">${capy('')}<div><h1>Soroban Friends</h1><p>${theme.name} says: pick a game!</p></div></div>
         ${MODULES.map(m => `
-          <div class="module" style="${Themes.css(themeFor(m.id))}"><h2><span class="num">${m.id}</span>${Themes.svg(Themes.forModule(m.id))}<span class="mtitle">${m.title}</span></h2>
+          <div class="module" style="${Themes.css(themeFor(m.id))}"><h2><span class="num">${m.id}</span>${Themes.svg(Themes.forModule(m.id))}<span class="mtitle">${m.title}</span><span class="bank" aria-label="${Coins.label(Coins.forModule(m.id), Coins.count(progress, Coins.forModule(m.id)))}">${Coins.svg(Coins.forModule(m.id))}<b>${Coins.count(progress, Coins.forModule(m.id))}</b></span></h2>
           <div class="path">${LESSONS.filter(l => l.module === m.id).map(l => {
             const ok = Runner.unlocked(progress, ORDER, l.id, l.module);
             const st = (progress.lessons[l.id] || {}).stars || 0;
@@ -83,12 +83,13 @@
     theme = themeFor(lesson.module);
     applyTheme(theme);
     session = Runner.start(lesson, mulberry32((Date.now() ^ (Math.random() * 1e9)) >>> 0));
-    streak = 0;
+    streak = 0; sessionCoins = 0;
     app.innerHTML = `
       <section class="lesson">
         <div class="top">
           <button class="round" id="back" aria-label="Back">‹</button>
           <div class="dots" id="dots"></div>
+          <div class="purse" id="purse"></div>
           <button class="round" id="again" aria-label="Say it again">🔊</button>
         </div>
         <div class="stage">
@@ -101,6 +102,7 @@
     document.getElementById('again').addEventListener('click', () => repeatText && say(repeatText));
     holdToOpen(document.getElementById('gear'), () => openParent());
     introPending = lesson.intro;
+    renderPurse(0);
     item();
   }
 
@@ -197,12 +199,34 @@
     idleTimer = setTimeout(() => { if (!locked && it === current) answer(false); }, SETTLE_MS);
   }
 
+  // ---------- coins ----------
+  // Each module pays in its own coin. A right answer earns the question's worth; the first wrong try on a
+  // question costs one coin (never below zero); repeats of missed questions are free practice.
+  let sessionCoins = 0, popTimer = null;
+  const coinOf = lesson => Coins.forModule(lesson.module);
+  function renderPurse(delta) {
+    clearTimeout(popTimer);
+    const el = document.getElementById('purse');
+    if (!el || !session) return;
+    const id = coinOf(session.lesson), n = Coins.count(progress, id);
+    el.setAttribute('aria-label', Coins.label(id, n));
+    el.innerHTML = `${Coins.svg(id)}<b>${n}</b>${delta ? `<span class="pop ${delta > 0 ? 'good' : 'bad'}">${delta > 0 ? '+' : '\u2212'}${Math.abs(delta)}</span>` : ''}`;
+    if (delta) popTimer = setTimeout(() => renderPurse(0), 1200);
+  }
+  function payCoins(it, ok, attemptsBefore) {
+    const applied = Coins.applyAnswer(progress, coinOf(session.lesson), it, ok, attemptsBefore);
+    sessionCoins += applied;
+    if (applied) { persist(); renderPurse(applied); }
+  }
+
   function answer(ok) {
     if (locked) return;
     clearTimeout(idleTimer);
     const it = current;
     const first = session.attempts === 0 && !it.retry;   // read before submit() resets it
+    const attemptsBefore = session.attempts;
     const r = Runner.submit(session, ok);
+    payCoins(it, ok, attemptsBefore);
     if (r.outcome === 'correct') {
       locked = true; sb.lock(true);
       if (it.kind === 'flash' || it.kind === 'mind') { sb.set(it.target); sb.cover(false); }   // show him the beads he pictured
@@ -223,12 +247,14 @@
     const res = Runner.result(session);
     Runner.record(progress, session.lesson.id, res, Date.now());
     persist();
+    const coin = coinOf(session.lesson), earned = sessionCoins;
     const next = ORDER[ORDER.indexOf(session.lesson.id) + 1];
     app.innerHTML = `
       <section class="result">
         ${capy(res.passed ? 'happy' : '')}
         <h1>${res.passed ? 'Amazing!' : 'Good practice!'}</h1>
         <div class="stars" aria-label="${res.stars} stars">${stars(res.stars)}</div>
+        ${earned > 0 ? `<div class="earned" aria-label="${Coins.label(coin, earned)}">${Coins.svg(coin)}<b>+${earned}</b></div>` : ''}
         <div class="row">
           <button class="big alt" id="r-again" aria-label="Play again">↻</button>
           ${res.passed && next ? '<button class="big" id="r-next" aria-label="Next game">›</button>' : ''}
@@ -236,7 +262,7 @@
         </div>
       </section>`;
     chime(res.passed);
-    say(phrases.done(res.passed));
+    say(phrases.done(res.passed) + (earned > 0 ? ` You earned ${Coins.label(coin, earned)}.` : ''));
     document.getElementById('r-again').addEventListener('click', () => play(session.lesson.id));
     document.getElementById('r-home').addEventListener('click', home);
     const n = document.getElementById('r-next');
@@ -260,7 +286,8 @@
       const forced = progress.openModules.includes(m.id);
       const control = open ? '<span class="ok">Open</span>'
         : `<button class="pbtn ${forced ? 'go' : ''}" data-mod="${m.id}">${forced ? 'Unlocked. Tap to lock' : 'Unlock'}</button>`;
-      return `<div class="modrow"><span><b>${m.id}</b> ${m.title}</span>${control}</div>`;
+      const cid = Coins.forModule(m.id);
+      return `<div class="modrow"><span><b>${m.id}</b> ${m.title}</span><span class="bank sm">${Coins.svg(cid)}<b>${Coins.count(progress, cid)}</b></span>${control}</div>`;
     }).join('');
     const rows = LESSONS.map(l => {
       const p = progress.lessons[l.id];

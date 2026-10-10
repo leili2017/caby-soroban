@@ -13,8 +13,22 @@ Each module has its own friend and colours (`themes.js`): Capy the capybara, Hed
 Axo the axolotl, Fenny the fennec fox, Hammy the hamster, Bun the rabbit, and Draco the green dragon.
 Module 1 uses the first, module 2 the next, and so on, wrapping after the seventh. Seven modules exist, one friend each. On the home screen each module heading shows its number, then its animal, then its title, so he can tell which friend a module belongs to.
 
+### Coins
+
+Each module pays in its own coin: copper, silver, gold, emerald, sapphire, ruby, amethyst (module 1 to 7, wrapping
+after the seventh). Every coin has its own emblem as well as its own colour. The purse sits in the lesson bar, each
+module heading on the home screen shows its balance, and the parent area lists them.
+
+- **A right answer earns the question's worth (1 to 5).** A direct move is 1, a friend of five adds 1, moving both rods
+  adds 1, a carry or borrow adds 3, counting on across a ten is 2. Reading a number is 1 (one rod) or 2 (two rods);
+  remembering one is 2 or 3; adding or taking away in his head adds 2 to the move's worth. See `worth()` in `coins.js`.
+- **The first wrong try on a question costs 1 coin.** More wrong tries on the same question cost nothing, and the purse
+  never goes below zero. A right answer after a mistake still pays in full.
+- **A repeated question** (one he missed, asked again at the end) neither pays nor costs.
+- **Reset progress** clears coins. "Skip this one" in the parent area changes no coins.
+
 Files: `soroban.js` (bead logic and SVG abacus), `lessons.js` (lesson data), `runner.js`
-(session scoring and saved progress), `speech.js` (voice choice and phrases), `themes.js` (friends and colours), `app.js` (screens, speech, parent area), `style.css`.
+(session scoring and saved progress), `coins.js` (coin types, pay scale, purse), `speech.js` (voice choice and phrases), `themes.js` (friends and colours), `app.js` (screens, speech, parent area), `style.css`.
 
 Lessons are data. To add one, append an entry to `LESSONS` in `lessons.js` with an `id`,
 `module`, `rods`, `count`, `mastery`, and a `gen(rng)` function that returns its items.
@@ -38,8 +52,8 @@ items of a lesson show a dotted outline of the answer and, for friends of five a
 - **Scoring:** only first-try answers count. A missed item comes back once at the end as practice.
   A lesson opens once the previous one is passed.
 - **Hint:** after two misses on one item, dotted circles show where the beads go.
-- **Parent area:** press and hold the small gear for about 1.2 seconds. Shows plays and best
-  scores, and can show the answer, skip an item, toggle sound, pick a voice, unlock a module, set the memory time
+- **Parent area:** press and hold the small gear for about 1.2 seconds. Shows plays, best
+  scores and coin balances, and can show the answer, skip an item, toggle sound, pick a voice, unlock a module, set the memory time
   (how long a picture stays: Short, Normal, Long), unlock all lessons, or reset. **Unlock** on a module opens all of its lessons; tap again to lock it. A module
   the child has earned shows "Open". Passing the last lesson of an unlocked module opens the next one
   as usual. Reset takes two taps (the button asks "Tap again to erase everything") and keeps the sound and voice settings.

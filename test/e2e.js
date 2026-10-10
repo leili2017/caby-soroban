@@ -11,6 +11,7 @@ const FILE = path.join(__dirname, '..', 'kids', 'capy-soroban.html');
 const L = require(path.join(__dirname, '..', 'kids', 'lessons.js'));
 const Th = require(path.join(__dirname, '..', 'kids', 'themes.js'));
 const Th_speech = require(path.join(__dirname, '..', 'kids', 'speech.js'));
+const Coins = require(path.join(__dirname, '..', 'kids', 'coins.js'));
 
 let failures = 0, passed = 0;
 async function test(name, fn) {
@@ -136,7 +137,7 @@ async function boot(opts = {}) {
     assert.strictEqual(heads.length, L.MODULES.length);
     heads.forEach((h, i) => {
       const m = L.MODULES[i], t = Th.get(Th.forModule(m.id)), kids = [...h.children];
-      assert.deepStrictEqual(kids.map(k => k.className.baseVal || k.className).map(c => c.split(' ')[0]), ['num', 'capy', 'mtitle'], `module ${m.id}: number, then animal, then title`);
+      assert.deepStrictEqual(kids.map(k => k.className.baseVal || k.className).map(c => c.split(' ')[0]), ['num', 'capy', 'mtitle', 'bank'], `module ${m.id}: number, then animal, then title, then coin balance`);
       assert.strictEqual(kids[0].textContent, String(m.id));
       assert.ok(kids[1].getAttribute('aria-label').includes(t.name), `module ${m.id} shows ${t.name}`);
       assert.strictEqual(kids[2].textContent, m.title);
@@ -392,6 +393,126 @@ async function boot(opts = {}) {
     a.click(a.q('.card[data-id="7.1"]'));
     const svg = a.q('.soroban'), kids = [...svg.children];
     assert.strictEqual(kids[kids.length - 1].getAttribute('class'), 'curtain', 'curtain is drawn last, so it is on top');
+  });
+
+  // ---------------- coins ----------------
+  const purseN = a => Number(a.q('#purse b').textContent);
+  const coinsSaved = a => (a.storage() || {}).coins || {};
+  // A wrong position for a one-rod "set" lesson that is neither the answer nor where the beads already sit.
+  const wrongDigit = a => { const t = a.wanted()[0], here = a.digits()[0]; return [0, 1, 2, 3, 4, 6, 7, 8].filter(x => x !== t && x !== here)[0]; };
+
+  await test('coins: each module heading shows its own coin and a balance, starting at zero', async () => {
+    const a = await boot();
+    const banks = a.qa('.module h2 .bank');
+    assert.strictEqual(banks.length, L.MODULES.length);
+    banks.forEach((b, i) => {
+      const id = Coins.forModule(L.MODULES[i].id);
+      assert.ok(b.querySelector('svg').getAttribute('aria-label').startsWith(id), `module ${L.MODULES[i].id} shows ${id}`);
+      assert.strictEqual(b.querySelector('b').textContent, '0');
+    });
+    assert.strictEqual(new Set(banks.map(b => b.querySelector('svg').getAttribute('aria-label'))).size, banks.length, 'a different coin per module');
+  });
+
+  await test('coins: a right answer adds the question worth and shows a +N that fades', async () => {
+    const a = await boot();
+    a.click(a.q('.card[data-id="1.2"]'));
+    assert.ok(a.q('#purse svg').getAttribute('aria-label').startsWith('copper'));
+    assert.strictEqual(purseN(a), 0);
+    a.setDigits(a.wanted()); a.advance(50);
+    assert.strictEqual(purseN(a), 1, '1.2 pays one coin');
+    assert.ok(/^\+1$/.test(a.q('#purse .pop').textContent) && a.q('#purse .pop.good'));
+    a.advance(1300);
+    assert.ok(!a.q('#purse .pop'), 'the +1 fades away');
+    assert.strictEqual(purseN(a), 1);
+    assert.strictEqual(coinsSaved(a).copper, 1, 'saved at once');
+  });
+
+  await test('coins: the first wrong try costs one coin (never below zero); later wrong tries cost nothing', async () => {
+    const a = await boot({ storage: { 'capy.progress.v1': JSON.stringify({ coins: { copper: 3 } }) } });
+    a.click(a.q('.card[data-id="1.2"]'));
+    assert.strictEqual(purseN(a), 3);
+    a.setDigits([wrongDigit(a)]); a.advance(2300);
+    assert.strictEqual(purseN(a), 2, 'first wrong try costs one');
+    assert.ok(a.q('#purse .pop.bad') && /^\u22121$/.test(a.q('#purse .pop').textContent));
+    a.setDigits([wrongDigit(a)]); a.advance(2300);
+    assert.strictEqual(purseN(a), 2, 'a second wrong try on the same question costs nothing');
+    a.setDigits(a.wanted()); a.advance(50);
+    assert.strictEqual(purseN(a), 3, 'then the right answer still pays');
+    assert.strictEqual(coinsSaved(a).copper, 3);
+  });
+
+  await test('coins: with an empty purse a mistake cannot go negative', async () => {
+    const a = await boot();
+    a.click(a.q('.card[data-id="1.2"]'));
+    a.setDigits([wrongDigit(a)]); a.advance(2300);
+    assert.strictEqual(purseN(a), 0);
+    assert.ok(!a.q('#purse .pop'), 'no -1 is shown when nothing was lost');
+    assert.ok(a.q('.coach .capy.oops'));
+    assert.ok(!('copper' in coinsSaved(a)) || coinsSaved(a).copper === 0);
+  });
+
+  await test('coins: a repeated question pays and costs nothing', async () => {
+    const a = await boot({ storage: { 'capy.progress.v1': JSON.stringify({ coins: { copper: 5 } }) } });
+    a.click(a.q('.card[data-id="1.2"]'));
+    a.setDigits([wrongDigit(a)]); a.advance(2300);            // miss the first question: -1, and it is queued again
+    a.setDigits(a.wanted()); a.advance(1600);                 // fix it: +1
+    assert.strictEqual(purseN(a), 5);
+    let n = 0; while (a.qa('.dots i').length - a.qa('.dots i.done').length > 1 && n++ < 20) a.solve();
+    const before = purseN(a);
+    assert.strictEqual(a.qa('.dots i').length, 11, 'the repeat is the last dot');
+    a.setDigits(a.wanted()); a.advance(50);                   // the repeat
+    assert.strictEqual(purseN(a), before, 'the practice repeat pays nothing');
+    a.advance(1600);
+    assert.ok(a.q('.result'));
+  });
+
+  await test('coins: harder lessons pay more per question, in their own coin', async () => {
+    const earn = async (id, storage) => {
+      const a = await boot(storage ? { storage } : {});
+      a.click(a.q(`.card[data-id="${id}"]`)); let n = 0;
+      while (!a.q('.result') && n++ < 40) a.solve();
+      return { a, coin: coinsSaved(a), total: Object.values(coinsSaved(a)).reduce((x, y) => x + y, 0) };
+    };
+    const open = { 'capy.progress.v1': JSON.stringify({ unlockAll: true }) };
+    const easy = await earn('1.2', open), hard = await earn('5.1', open);
+    assert.deepStrictEqual(Object.keys(easy.coin), ['copper']);
+    assert.deepStrictEqual(Object.keys(hard.coin), [Coins.forModule(5)], '5.1 pays only in its own module coin');
+    assert.ok(hard.total > easy.total * 3, `5.1 paid ${hard.total}, 1.2 paid ${easy.total}`);
+    assert.ok(easy.a.q('.result .earned') && /^\+\d+$/.test(easy.a.q('.result .earned b').textContent));
+    assert.strictEqual(Number(easy.a.q('.result .earned b').textContent.slice(1)), easy.total, 'the result screen shows what this lesson paid');
+    assert.ok(/You earned \d+ copper coins/.test(easy.a.spoken[easy.a.spoken.length - 1].text), 'and says it aloud');
+  });
+
+  await test('coins: every module pays its own coin, and a full playthrough earns in all seven', async () => {
+    const a = await boot();
+    for (const l of L.LESSONS) { a.click(a.q(`.card[data-id="${l.id}"]`)); let n = 0; while (!a.q('.result') && n++ < 40) a.solve(); a.click(a.q('#r-home')); }
+    const saved = coinsSaved(a);
+    assert.deepStrictEqual(Object.keys(saved).sort(), [...Coins.ORDER].sort(), 'all seven coin types earned');
+    assert.ok(Object.values(saved).every(v => v > 0));
+    a.qa('.module h2 .bank').forEach((b, i) => assert.strictEqual(Number(b.querySelector('b').textContent), saved[Coins.forModule(L.MODULES[i].id)], `module ${i + 1} balance on the home screen`));
+    assert.ok(saved.sapphire > saved.silver, `friends of ten (sapphire ${saved.sapphire}) pays more than tens and ones (silver ${saved.silver})`);
+    assert.ok(saved.ruby > saved.copper, 'bigger numbers pays more than meeting the soroban');
+  });
+
+  await test('coins: balances survive a reload, show in the parent area, and reset clears them', async () => {
+    const a = await boot();
+    a.playLesson('1.1'); a.click(a.q('#r-home'));
+    const n = coinsSaved(a).copper; assert.ok(n > 0);
+    const b = await boot({ storage: { 'capy.progress.v1': a.win.localStorage.getItem('capy.progress.v1') } });
+    assert.strictEqual(Number(b.q('.module h2 .bank b').textContent), n, 'home screen after reload');
+    b.fire(b.q('#gear'), 'pointerdown'); b.advance(1300);
+    assert.strictEqual(Number(b.q('.modrow .bank b').textContent), n, 'parent area balance');
+    b.click(b.q('#p-reset')); b.click(b.q('#p-reset'));
+    assert.deepStrictEqual(coinsSaved(b), {});
+    assert.strictEqual(b.q('.module h2 .bank b').textContent, '0');
+  });
+
+  await test('coins: memory lessons pay the higher price and show the coin in the lesson bar', async () => {
+    const a = await boot({ storage: { 'capy.progress.v1': JSON.stringify({ openModules: [7] }) } });
+    a.click(a.q('.card[data-id="7.1"]'));
+    assert.ok(a.q('#purse svg').getAttribute('aria-label').startsWith('amethyst'));
+    a.solve(); a.advance(50);
+    assert.strictEqual(purseN(a), 2, 'remembering a digit pays 2');
   });
 
   console.log(`e2e: ${passed} passed${failures ? `, ${failures} FAILED` : ''}`);

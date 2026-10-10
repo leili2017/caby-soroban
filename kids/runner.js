@@ -41,14 +41,20 @@
   const KEY = 'capy.progress.v1';
   // How long a picture stays on screen in the memory lessons. A parent can lengthen or shorten it.
   const PEEKS = [{ scale: 1, label: 'Normal' }, { scale: 1.7, label: 'Long' }, { scale: 0.7, label: 'Short' }];
-  const fresh = () => ({ lessons: {}, unlockAll: false, openModules: [], sound: true, voice: '', peekScale: 1 });
+  // coins: { copper: 12, ... } one count per coin type. Anything that is not a positive whole number is dropped.
+  function cleanCoins(c) {
+    const out = {};
+    if (c && typeof c === 'object' && !Array.isArray(c)) for (const k of Object.keys(c)) if (Number.isInteger(c[k]) && c[k] > 0) out[k] = c[k];
+    return out;
+  }
+  const fresh = () => ({ lessons: {}, unlockAll: false, openModules: [], sound: true, voice: '', peekScale: 1, coins: {} });
 
   function load(storage) {
     try {
       const p = JSON.parse(storage.getItem(KEY));
       return p && typeof p === 'object'
         ? { ...fresh(), ...p, lessons: { ...(p.lessons || {}) }, openModules: Array.isArray(p.openModules) ? p.openModules.filter(Number.isInteger) : [],
-            peekScale: PEEKS.some(x => x.scale === p.peekScale) ? p.peekScale : 1 }
+            peekScale: PEEKS.some(x => x.scale === p.peekScale) ? p.peekScale : 1, coins: cleanCoins(p.coins) }
         : fresh();
     } catch (e) {
       return fresh();
@@ -68,11 +74,12 @@
     };
     return p;
   }
-  // Erase scores and unlocks but keep the settings a parent chose (sound, voice).
+  // Erase scores, unlocks and coins but keep the settings a parent chose (sound, voice, memory time).
   function wipe(p) {
     p.lessons = {};
     p.unlockAll = false;
     p.openModules = [];
+    p.coins = {};
     return p;
   }
   // A lesson opens once the one before it is passed.

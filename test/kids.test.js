@@ -7,6 +7,7 @@ const L = require(path.join(__dirname, '..', 'kids', 'lessons.js'));
 const R = require(path.join(__dirname, '..', 'kids', 'runner.js'));
 const T = require(path.join(__dirname, '..', 'kids', 'speech.js'));
 const Th = require(path.join(__dirname, '..', 'kids', 'themes.js'));
+const C = require(path.join(__dirname, '..', 'kids', 'coins.js'));
 
 let passed = 0;
 function test(name, fn) {
@@ -803,6 +804,156 @@ test('memory time: three settings, saved, cycles, bad values fall back, and a re
   R.wipe(p); assert.strictEqual(p.peekScale, 1.7, 'reset keeps parent settings');
   const bad = memory(); bad.setItem(R.KEY, JSON.stringify({ peekScale: 0 })); assert.strictEqual(R.load(bad).peekScale, 1);
   const bad2 = memory(); bad2.setItem(R.KEY, JSON.stringify({ peekScale: 'long' })); assert.strictEqual(R.load(bad2).peekScale, 1);
+});
+
+// ---------- coins ----------
+const itemsOf = (id, seeds = 200) => { const out = []; for (let sd = 0; sd < seeds; sd++) out.push(...L.byId[id].gen(rng(sd))); return out; };
+const avgWorth = id => { const it = itemsOf(id, 100); return it.reduce((a, i) => a + C.worth(i), 0) / it.length; };
+test('seven coin types, one per module, in a fixed order, wrapping after the seventh', () => {
+  assert.deepStrictEqual(C.ORDER, ['copper', 'silver', 'gold', 'emerald', 'sapphire', 'ruby', 'amethyst']);
+  C.ORDER.forEach((id, i) => assert.strictEqual(C.forModule(i + 1), id));
+  assert.strictEqual(C.forModule(8), 'copper'); assert.strictEqual(C.forModule(9), 'silver');
+  for (const n of [0, -2, 1.5, NaN, undefined]) assert.ok(C.COINS[C.forModule(n)], String(n));
+  assert.strictEqual(C.get('nope').id, 'copper');
+  for (const m of L.MODULES) assert.ok(C.COINS[C.forModule(m.id)]);
+});
+test('every coin has its own colour AND its own emblem, so colour is never the only clue', () => {
+  const cs = C.ORDER.map(id => C.COINS[id]);
+  assert.strictEqual(new Set(cs.map(c => c.face)).size, 7);
+  assert.strictEqual(new Set(cs.map(c => c.rim)).size, 7);
+  assert.strictEqual(new Set(cs.map(c => c.emblem)).size, 7);
+  cs.forEach(c => assert.ok(contrast(c.ink, c.face) >= 2.5, `${c.id} emblem must stand out from the coin face`));
+});
+test('each coin draws well-formed SVG with an accessible name and no bad values', () => {
+  for (const id of C.ORDER) {
+    const svg = C.svg(id), stack = [];
+    for (const m of svg.matchAll(/<(\/?)([a-zA-Z]+)([^>]*?)(\/?)>/g)) {
+      const [, close, tag, , self] = m;
+      if (self) continue;
+      if (close) assert.strictEqual(stack.pop(), tag, `${id}: mismatched </${tag}>`); else stack.push(tag);
+    }
+    assert.deepStrictEqual(stack, [], `${id}: unclosed tags`);
+    assert.ok(svg.includes(`aria-label="${id} coin"`) && svg.includes('viewBox="0 0 48 48"'));
+    assert.ok(!/NaN|undefined|\[object/.test(svg), `${id} has a bad value`);
+  }
+});
+test('coin labels are spoken correctly in the singular and the plural', () => {
+  assert.strictEqual(C.label('gold', 1), '1 gold coin');
+  assert.strictEqual(C.label('gold', 0), '0 gold coins');
+  assert.strictEqual(C.label('ruby', 12), '12 ruby coins');
+});
+test('worth is always a whole number from 1 to 5, for every item in every lesson', () => {
+  for (const l of L.LESSONS) for (let sd = 0; sd < 100; sd++) l.gen(rng(sd)).forEach(i => {
+    const w = C.worth(i);
+    assert.ok(Number.isInteger(w) && w >= 1 && w <= 5, `${l.id} worth ${w}`);
+  });
+  assert.strictEqual(C.worth(null), 1); assert.strictEqual(C.worth({}), 1);
+});
+test('harder questions pay more: a rule-by-rule check of the pay scale', () => {
+  const direct1 = { kind: 'set', rods: 1, start: [2], target: [3] };
+  const five = { kind: 'set', rods: 1, start: [3], target: [6] };
+  const carry = { kind: 'set', rods: 2, start: [0, 8], target: [1, 5] };
+  const bothDirect = { kind: 'set', rods: 2, start: [2, 1], target: [3, 3] };
+  const countOn = { kind: 'set', rods: 2, start: [3, 9], target: [4, 0] };
+  assert.strictEqual(C.worth(direct1), 1);
+  assert.strictEqual(C.worth(five), 2, 'a friend of five is worth one more');
+  assert.strictEqual(C.worth(bothDirect), 2, 'two rods moving is worth one more');
+  assert.strictEqual(C.worth(countOn), 2, 'counting on across a ten is a small carry');
+  assert.strictEqual(C.worth(carry), 4, 'a carry is worth three more');
+  assert.ok(C.worth(carry) > C.worth(five) && C.worth(five) > C.worth(direct1));
+  assert.strictEqual(C.worth({ kind: 'read', rods: 1, target: [4] }), 1);
+  assert.strictEqual(C.worth({ kind: 'read', rods: 2, target: [4, 7] }), 2);
+  assert.strictEqual(C.worth({ kind: 'flash', rods: 1, target: [4] }), 2, 'remembering beats reading');
+  assert.strictEqual(C.worth({ kind: 'recall', rods: 2, start: [0, 0], target: [4, 7] }), 3);
+  assert.strictEqual(C.worth({ kind: 'mind', rods: 1, start: [3], target: [4] }), 3, 'doing it in your head adds two');
+  assert.strictEqual(C.worth({ kind: 'mind', rods: 1, start: [3], target: [6] }), 4);
+});
+test('lessons pay more as the course gets harder (average coins per question)', () => {
+  const a = id => avgWorth(id);
+  assert.ok(a('1.2') < a('2.2'), 'one rod < two rods');
+  assert.ok(a('3.1') < a('4.1'), 'direct < friends of five');
+  assert.ok(a('4.1') < a('5.1'), 'friends of five < friends of ten');
+  assert.ok(a('6.1') < a('6.3') && a('6.3') < a('6.5'), 'module 6 climbs');
+  assert.ok(a('5.1') >= 3.5 && a('6.5') >= 3.5, 'carrying and borrowing pay the most');
+  assert.ok(a('7.1') > a('1.4'), 'remembering a digit beats reading one');
+  assert.ok(a('7.4') > a('3.1'), 'adding in your head beats adding on the beads');
+  assert.ok(a('3.1') === 1 && a('1.2') === 1, 'the first lessons pay one coin');
+});
+test('the first lessons pay a fair price: every question is worth at least one coin', () => {
+  for (const l of L.LESSONS) for (let sd = 0; sd < 50; sd++) l.gen(rng(sd)).forEach(i => assert.ok(C.worth(i) >= 1));
+});
+test('a right answer earns the full worth, a wrong first try costs one, later wrong tries cost nothing', () => {
+  const it = { kind: 'set', rods: 2, start: [0, 8], target: [1, 5] };   // worth 4
+  assert.strictEqual(C.settle(it, { ok: true, attemptsBefore: 0 }), 4);
+  assert.strictEqual(C.settle(it, { ok: true, attemptsBefore: 2 }), 4, 'still earns after mistakes');
+  assert.strictEqual(C.settle(it, { ok: false, attemptsBefore: 0 }), -1);
+  assert.strictEqual(C.settle(it, { ok: false, attemptsBefore: 1 }), 0);
+  assert.strictEqual(C.settle(it, { ok: false, attemptsBefore: 5 }), 0);
+});
+test('a repeat of a missed question is free practice: it neither pays nor costs', () => {
+  const it = { kind: 'set', rods: 1, start: [0], target: [3], retry: true };
+  for (const ok of [true, false]) for (const attemptsBefore of [0, 1, 3]) assert.strictEqual(C.settle(it, { ok, attemptsBefore }), 0);
+  assert.strictEqual(C.settle(null, { ok: true }), 0);
+});
+test('the purse adds, subtracts, never goes below zero, and reports the change actually applied', () => {
+  const p = R.load(memory());
+  assert.strictEqual(C.count(p, 'gold'), 0);
+  assert.strictEqual(C.add(p, 'gold', 5), 5); assert.strictEqual(C.count(p, 'gold'), 5);
+  assert.strictEqual(C.add(p, 'gold', -2), -2); assert.strictEqual(C.count(p, 'gold'), 3);
+  assert.strictEqual(C.add(p, 'gold', -10), -3, 'only what he had can be lost');
+  assert.strictEqual(C.count(p, 'gold'), 0);
+  assert.strictEqual(C.add(p, 'gold', -1), 0, 'an empty purse stays empty');
+  assert.strictEqual(C.count(p, 'gold'), 0);
+  assert.strictEqual(C.count(p, 'ruby'), 0, 'other coins are untouched');
+});
+test('a full lesson pays only its own module coin, and mistakes can never push the purse negative', () => {
+  for (const id of ['1.2', '5.1', '6.5', '7.4']) for (let sd = 0; sd < 30; sd++) {
+    const lesson = L.byId[id], coin = C.forModule(lesson.module), p = R.load(memory());
+    const s = R.start(lesson, rng(sd));
+    let guard = 0;
+    while (R.current(s) && guard++ < 100) {
+      const item = R.current(s), before = s.attempts;
+      const ok = (guard % 3) !== 0;                       // a mix of right and wrong answers
+      C.applyAnswer(p, coin, item, ok, before);
+      R.submit(s, ok);
+      Object.values(p.coins).forEach(v => assert.ok(v >= 0));
+    }
+    assert.deepStrictEqual(Object.keys(p.coins).filter(k => k !== coin), [], `${id} paid in the wrong coin`);
+  }
+});
+test('a perfect lesson earns exactly the sum of its question worths; a flawless 5.1 beats a flawless 1.2', () => {
+  for (const id of ['1.2', '3.3', '5.1', '6.5']) {
+    const lesson = L.byId[id], p = R.load(memory()), coin = C.forModule(lesson.module);
+    const s = R.start(lesson, rng(9)), expected = s.queue.reduce((a, i) => a + C.worth(i), 0);
+    while (R.current(s)) { C.applyAnswer(p, coin, R.current(s), true, s.attempts); R.submit(s, true); }
+    assert.strictEqual(C.count(p, coin), expected, id);
+  }
+  const total = id => { const s = R.start(L.byId[id], rng(9)); return s.queue.reduce((a, i) => a + C.worth(i), 0); };
+  assert.ok(total('5.1') > 3 * total('1.2'));
+});
+test('a missed-then-fixed question nets worth minus one, and the requeued repeat adds nothing', () => {
+  const lesson = L.byId['5.1'], p = R.load(memory()), coin = 'gold';
+  const s = R.start(lesson, rng(4)), first = R.current(s), w = C.worth(first);
+  C.applyAnswer(p, coin, first, false, s.attempts); R.submit(s, false);
+  assert.strictEqual(C.count(p, coin), 0, 'cannot go below zero');
+  C.applyAnswer(p, coin, first, true, s.attempts); R.submit(s, true);
+  assert.strictEqual(C.count(p, coin), w);
+  while (R.current(s) && R.current(s) !== s.queue[s.queue.length - 1]) { C.applyAnswer(p, coin, R.current(s), true, s.attempts); R.submit(s, true); }
+  const before = C.count(p, coin), last = R.current(s);
+  assert.ok(last.retry, 'the repeat comes last');
+  C.applyAnswer(p, coin, last, true, s.attempts);
+  assert.strictEqual(C.count(p, coin), before, 'the practice repeat pays nothing');
+});
+test('coins are saved with progress, survive reload, are cleaned of junk, and cleared by reset', () => {
+  const st = memory(), p = R.load(st);
+  assert.deepStrictEqual(p.coins, {});
+  C.add(p, 'silver', 7); C.add(p, 'ruby', 2); R.save(st, p);
+  assert.deepStrictEqual(R.load(st).coins, { silver: 7, ruby: 2 });
+  const junk = memory(); junk.setItem(R.KEY, JSON.stringify({ coins: { gold: 4, silver: -3, ruby: 1.5, emerald: 'x', copper: 0, sapphire: null, amethyst: 2 } }));
+  assert.deepStrictEqual(R.load(junk).coins, { gold: 4, amethyst: 2 });
+  for (const bad of ['all', 5, [1, 2], null]) { const b = memory(); b.setItem(R.KEY, JSON.stringify({ coins: bad })); assert.deepStrictEqual(R.load(b).coins, {}); }
+  const old = memory(); old.setItem(R.KEY, JSON.stringify({ lessons: { '1.1': { passed: true } } })); assert.deepStrictEqual(R.load(old).coins, {});
+  R.wipe(p); assert.deepStrictEqual(p.coins, {});
 });
 
 console.log(`${passed} tests passed${process.exitCode ? ', with failures' : ''}`);
