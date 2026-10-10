@@ -11,7 +11,7 @@ Two apps live in this repo. Both are static files with no server, build step, or
 
 Each module has its own friend and colours (`themes.js`): Capy the capybara, Hedgie the hedgehog,
 Axo the axolotl, Fenny the fennec fox, Hammy the hamster, Bun the rabbit, and Draco the green dragon.
-Module 1 uses the first, module 2 the next, and so on, wrapping after the seventh. Seven modules exist, one friend each.
+Module 1 uses the first, module 2 the next, and so on, wrapping after the seventh. Seven modules exist, one friend each. On the home screen each module heading shows its number, then its animal, then its title, so he can tell which friend a module belongs to.
 
 Files: `soroban.js` (bead logic and SVG abacus), `lessons.js` (lesson data), `runner.js`
 (session scoring and saved progress), `speech.js` (voice choice and phrases), `themes.js` (friends and colours), `app.js` (screens, speech, parent area), `style.css`.

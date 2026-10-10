@@ -62,7 +62,7 @@
       <section class="home">
         <div class="hero">${capy('')}<div><h1>Soroban Friends</h1><p>${theme.name} says: pick a game!</p></div></div>
         ${MODULES.map(m => `
-          <div class="module" style="${Themes.css(themeFor(m.id))}"><h2><span class="num">${m.id}</span>${m.title}</h2>
+          <div class="module" style="${Themes.css(themeFor(m.id))}"><h2><span class="num">${m.id}</span>${Themes.svg(Themes.forModule(m.id))}<span class="mtitle">${m.title}</span></h2>
           <div class="path">${LESSONS.filter(l => l.module === m.id).map(l => {
             const ok = Runner.unlocked(progress, ORDER, l.id, l.module);
             const st = (progress.lessons[l.id] || {}).stars || 0;

@@ -24,6 +24,9 @@ button:focus-visible { outline: 4px solid var(--gold); outline-offset: 2px; }
 .hero p { margin: 6px 0 0; color: var(--muted); font-size: 20px; }
 .module { margin-top: 26px; }
 .module h2 { font-size: 24px; margin: 0 0 12px; display: flex; align-items: center; gap: 10px; }
+.module h2 .capy { width: 72px; height: auto; flex: none; background: var(--bg); border-radius: 18px; padding: 2px 4px; }
+.module h2 .mtitle { min-width: 0; }
+.module h2 .capy .blush { display: inline; }
 .module h2 .num { background: var(--brand); color: #fff; border-radius: 50%; width: 38px; height: 38px; display: grid; place-items: center; font-size: 22px; }
 .path { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 16px; }
 .card {
@@ -127,6 +130,7 @@ button:focus-visible { outline: 4px solid var(--gold); outline-offset: 2px; }
 @media (max-width: 700px), (max-height: 520px) {
   .bubble { font-size: 44px; } .big { font-size: 26px; padding: 8px 36px; min-height: 64px; }
   .hero .capy { width: 100px; } .hero h1 { font-size: 28px; }
+  .module h2 .capy { width: 56px; }
 }
 @media (prefers-reduced-motion: reduce) {
   .capy.happy, .choice.pulse { animation: none; }

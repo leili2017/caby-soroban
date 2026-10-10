@@ -131,6 +131,17 @@ async function boot(opts = {}) {
     assert.strictEqual(a.qa('.card').length, L.LESSONS.length);
     assert.deepStrictEqual(a.qa('.card:not([disabled])').map(c => c.dataset.id), ['1.1']);
     assert.ok(a.q('.hero svg.capy'), 'friend is drawn');
+    // every module heading shows its own friend between the number and the title
+    const heads = a.qa('.module h2');
+    assert.strictEqual(heads.length, L.MODULES.length);
+    heads.forEach((h, i) => {
+      const m = L.MODULES[i], t = Th.get(Th.forModule(m.id)), kids = [...h.children];
+      assert.deepStrictEqual(kids.map(k => k.className.baseVal || k.className).map(c => c.split(' ')[0]), ['num', 'capy', 'mtitle'], `module ${m.id}: number, then animal, then title`);
+      assert.strictEqual(kids[0].textContent, String(m.id));
+      assert.ok(kids[1].getAttribute('aria-label').includes(t.name), `module ${m.id} shows ${t.name}`);
+      assert.strictEqual(kids[2].textContent, m.title);
+    });
+    assert.strictEqual(new Set(heads.map(h => h.querySelector('svg').getAttribute('aria-label'))).size, heads.length, 'a different animal for each module');
   });
 
   await test('1.1: the hint shows on early items only, and a drag to the bar is accepted', async () => {
