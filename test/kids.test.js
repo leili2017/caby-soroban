@@ -956,4 +956,17 @@ test('coins are saved with progress, survive reload, are cleaned of junk, and cl
   R.wipe(p); assert.deepStrictEqual(p.coins, {});
 });
 
+// ---------- GitHub Pages copy ----------
+test('docs/index.html (what Pages serves) is exactly the current build, and is self-contained', () => {
+  const root = path.join(__dirname, '..');
+  const built = require(path.join(root, 'scripts', 'build-kids.js')).build();
+  const page = fs.readFileSync(path.join(root, 'docs', 'index.html'), 'utf8');
+  assert.strictEqual(page, built, 'docs/index.html is stale: run node scripts/build-kids.js');
+  assert.strictEqual(fs.readFileSync(path.join(root, 'kids', 'capy-soroban.html'), 'utf8'), built);
+  assert.ok(fs.existsSync(path.join(root, 'docs', '.nojekyll')));
+  // Served from a sub-path (user.github.io/repo/), so nothing may point at the site root or another file.
+  assert.ok(!/<link[^>]+href=|<script[^>]+src=|\burl\(|href="\/|src="\/|fetch\(|serviceWorker/i.test(page), 'page must not depend on other files');
+  assert.ok(/<meta name="viewport"[^>]*viewport-fit=cover/.test(page) && /apple-mobile-web-app-capable/.test(page));
+});
+
 console.log(`${passed} tests passed${process.exitCode ? ', with failures' : ''}`);

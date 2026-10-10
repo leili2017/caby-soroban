@@ -13,6 +13,19 @@ Each module has its own friend and colours (`themes.js`): Capy the capybara, Hed
 Axo the axolotl, Fenny the fennec fox, Hammy the hamster, Bun the rabbit, and Draco the green dragon.
 Module 1 uses the first, module 2 the next, and so on, wrapping after the seventh. Seven modules exist, one friend each. On the home screen each module heading shows its number, then its animal, then its title, so he can tell which friend a module belongs to.
 
+### Publish on GitHub Pages (to play on an iPad)
+
+`docs/index.html` is a copy of the built page, and `docs/.nojekyll` tells Pages to serve it as is. After editing
+anything in `kids/`, run `node scripts/build-kids.js` to refresh it. A unit test fails if `docs/` is out of date.
+
+1. Push the repo to GitHub.
+2. Settings > Pages > Build and deployment: Source "Deploy from a branch", Branch `main`, folder `/docs`, Save.
+3. After a minute or two the site is at `https://<user>.github.io/<repo>/`.
+4. On the iPad, open that address in Safari, then Share > Add to Home Screen.
+
+Pages sites are public, and progress is saved per browser and per address, so decide the final address before
+he earns many coins.
+
 ### Coins
 
 Each module pays in its own coin: copper, silver, gold, emerald, sapphire, ruby, amethyst (module 1 to 7, wrapping
